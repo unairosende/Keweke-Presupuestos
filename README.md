@@ -29,7 +29,7 @@ const GOOGLE_CLIENT_ID = "YOUR_GOOGLE_CLIENT_ID"; // ← Pega aquí tu Client ID
 
 1. Sube el fichero a un repositorio de GitHub
 2. Settings → Pages → Source: **main branch / root**
-3. La app estará en `https://TU-USUARIO.github.io/NOMBRE-REPO/`
+3. La app estará en `https://unairosende.github.io/Keweke-Presupuestos-2/`
 
 ---
 
