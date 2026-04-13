@@ -148,12 +148,15 @@ async function dbFindRow(token, id) {
 }
 
 function nextCode(codes) {
+  // Only count codes that match the Keweke pattern exactly (17AXXX)
+  // and cap at reasonable range to ignore historic imports with high numbers
   var counters = (codes||[]).map(function(c) {
-    var m = String(c).trim().match(/^\d+A(\d+)/);
+    var m = String(c).trim().match(/^17A(\d{3})$/);
     return m ? parseInt(m[1]) : 0;
-  }).filter(function(n) { return n > 0; });
+  }).filter(function(n) { return n > 0 && n < 500; }); // ignore historic outliers
   if (!counters.length) return '17A066';
-  return '17A' + String(Math.max.apply(null, counters) + 1).padStart(3, '0');
+  var next = Math.max.apply(null, counters) + 1;
+  return '17A' + String(next).padStart(3, '0');
 }
 
 // ─── TARIFAS REALES (extraídas del CSV de Keweke) ─────────────────────────────
@@ -612,8 +615,7 @@ function Autocomplete({
     }
   }, filtered.map((c, i) => /*#__PURE__*/React.createElement("div", {
     key: i,
-    onMouseDown: () => { userTyped.current = false; ;
-    },
+    onMouseDown: () => { userTyped.current = false; onSelect(c); setOpen(false); },
     style: {
       padding: "10px 14px",
       cursor: "pointer",
@@ -631,6 +633,37 @@ function App() {
   // Auth
   const _auth = useGoogleAuthHook();
   const authToken    = _auth.token;
+  const [darkMode, setDarkMode] = React.useState(() => {
+    return localStorage.getItem('kw_theme') !== 'light';
+  });
+  const TH = darkMode ? {
+    bg:     '#161515',
+    card:   '#1C1B1B',
+    card2:  '#232222',
+    border: '#2A2929',
+    border2:'#333232',
+    text:   '#E1E1E1',
+    text2:  '#A8A6A6',
+    text3:  '#7A7878',
+    text4:  '#5A5858',
+    input:  '#232222',
+  } : {
+    bg:     '#F5F4F2',
+    card:   '#FFFFFF',
+    card2:  '#F0EFED',
+    border: '#E1E1E1',
+    border2:'#D0CFCD',
+    text:   '#161515',
+    text2:  '#444242',
+    text3:  '#666464',
+    text4:  '#888686',
+    input:  '#FFFFFF',
+  };
+  const toggleTheme = () => {
+    const next = !darkMode;
+    setDarkMode(next);
+    localStorage.setItem('kw_theme', next ? 'dark' : 'light');
+  };
   const authLoading  = _auth.busy;
   const authError    = _auth.err;
   const login        = _auth.login;
@@ -792,8 +825,6 @@ function App() {
     rechazado: "Rechazado"
   };
   const filtrados = proyectos.filter(p => {
-    // Estado filter
-    if (filter !== "todos" && p.estado !== filter) return false;
     // Tipo filter
     if (filterTipo && p.tipo !== filterTipo) return false;
     // Días de rodaje filter
@@ -832,7 +863,7 @@ function App() {
   };
   const LS = {
     fontSize: 9,
-    color: "#5A5858",
+    color: TH.text4,
     letterSpacing: 1,
     display: "block",
     marginBottom: 5,
@@ -853,18 +884,19 @@ function App() {
   return /*#__PURE__*/React.createElement("div", {
     style: {
       minHeight: "100vh",
-      background: "#161515",
-      color: "#E1E1E1",
-      fontFamily: "'Georgia',serif"
+      background: TH.bg,
+      color: TH.text,
+      fontFamily: "'DM Sans', sans-serif",
+      transition: "background 0.25s, color 0.25s"
     }
-  }, /*#__PURE__*/React.createElement("style", null, `@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}@keyframes fsin{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:#161515}::-webkit-scrollbar-thumb{background:#1e2030;border-radius:2px}input.no-spin::-webkit-inner-spin-button,input.no-spin::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}input.no-spin{-moz-appearance:textfield}`), toast.text && /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("style", null, `@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}@keyframes fadeUp{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:#161515}::-webkit-scrollbar-thumb{background:#333;border-radius:2px}input.nospin::-webkit-inner-spin-button,input.nospin::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}input.nospin{-moz-appearance:textfield}input:focus,select:focus,textarea:focus{border-color:#FF4A31!important;outline:none}`), toast.text && /*#__PURE__*/React.createElement("div", {
     style: {
       position: "fixed",
       top: 16,
       right: 16,
       zIndex: 9999,
-      background: toast.type === "error" ? "#1a0808" : "#080f0a",
-      border: `1px solid ${toast.type === "error" ? "#ef444455" : "#10b98155"}`,
+      background: toast.type === "error" ? (darkMode ? "#1a0808" : "#fff0f0") : (darkMode ? "#080f0a" : "#f0fff8"),
+      border: "1px solid " + (toast.type === "error" ? "#ef444455" : "#2ECC8F55"),
       color: toast.type === "error" ? "#ef4444" : "#2ECC8F",
       padding: "10px 18px",
       borderRadius: 8,
@@ -1191,29 +1223,7 @@ function App() {
       flexWrap: "wrap",
       alignItems: "center"
     }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: "flex",
-      gap: 5
-    }
-  }, ["todos", "borrador", "enviado", "aprobado"].map(e => /*#__PURE__*/React.createElement("button", {
-    key: e,
-    onClick: () => setFilter(e),
-    style: {
-      background: filter === e ? "#FF4A31" : "transparent",
-      border: "1px solid " + (filter === e ? "#FF4A31" : "#333232"),
-      color: filter === e ? "#fff" : "#7A7878",
-      padding: "5px 14px",
-      borderRadius: 20,
-      cursor: "pointer",
-      fontSize: 10,
-      textTransform: "uppercase",
-      letterSpacing: 1.5,
-      fontWeight: filter === e ? 600 : 400,
-      fontFamily: "'DM Sans', sans-serif",
-      transition: "all 0.15s"
-    }
-  }, e))), /*#__PURE__*/React.createElement("select", {
+  },  /*#__PURE__*/React.createElement("select", {
     value: filterTipo,
     onChange: e => setFilterTipo(e.target.value),
     style: {
@@ -1280,8 +1290,8 @@ function App() {
         setView("editor");
       },
       style: {
-        background: "#1C1B1B",
-        border: "1px solid #2A2929",
+        background: TH.card,
+        border: "1px solid " + TH.border,
         borderRadius: 10,
         padding: "16px 20px",
         cursor: "pointer",
@@ -1313,7 +1323,7 @@ function App() {
       }
     }, /*#__PURE__*/React.createElement("span", {
       style: {
-        fontSize: 13,
+        fontSize: 15,
         fontWeight: 700,
         color: "#FF4A31",
         fontFamily: "'DM Sans', monospace",
@@ -1371,17 +1381,7 @@ function App() {
         fontSize: 14,
         color: "#FF4A31"
       }
-    }, fEUR(total)), /*#__PURE__*/React.createElement("span", {
-      style: {
-        fontSize: 9,
-        padding: "3px 10px",
-        borderRadius: 20,
-        background: eCol[p.estado] + "22",
-        color: eCol[p.estado],
-        letterSpacing: 1,
-        textTransform: "uppercase"
-      }
-    }, eLbl[p.estado])));
+    }, fEUR(total)), ));
   }), filtrados.length === 0 && /*#__PURE__*/React.createElement("div", {
     style: {
       textAlign: "center",
@@ -1925,7 +1925,10 @@ function App() {
         marginTop: 2
       }
     }, cur.codigo, " \xB7 v", cur.version)), (() => {
-      const siblings = proyectos.filter(p => p.codigo === cur.codigo).sort((a, b) => a.version - b.version);
+      const siblings = proyectos
+        .filter(p => p.codigo === cur.codigo)
+        .filter((p, i, arr) => arr.findIndex(x => x.version === p.version) === i) // dedupe by version
+        .sort((a, b) => a.version - b.version);
       return siblings.length > 1 ? /*#__PURE__*/React.createElement("div", {
         style: {
           marginBottom: 16
