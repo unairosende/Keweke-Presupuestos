@@ -193,6 +193,71 @@ function nextCode(codes) {
   var nextNum = Math.max.apply(null, counters) + 1;
   return '17A' + String(nextNum).padStart(3, '0');
 }
+// ── PRESUPUESTOS_DB: guardar, cargar y actualizar ────────────────────────────
+const DB_SHEET = 'Presupuestos_DB';
+
+async function dbLoad(token) {
+  const r = await fetch(
+    'https://sheets.googleapis.com/v4/spreadsheets/' + SHEET_ID +
+    '/values/' + encodeURIComponent(DB_SHEET + '!A:H'),
+    { headers: { Authorization: 'Bearer ' + token } }
+  );
+  if (!r.ok) return [];
+  const data = await r.json();
+  const rows = data.values || [];
+  if (rows.length < 2) return [];
+  // Skip header row, parse each JSON
+  return rows.slice(1).map(row => {
+    try { return JSON.parse(row[7] || '{}'); } catch { return null; }
+  }).filter(Boolean);
+}
+
+async function dbSave(token, proyecto) {
+  // Check if already exists (update) or new (append)
+  const existing = await dbFindRow(token, proyecto.id);
+  const rowData  = [
+    proyecto.id, proyecto.codigo, proyecto.cliente,
+    proyecto.nombre, proyecto.tipo, proyecto.estado,
+    proyecto.fecha, JSON.stringify(proyecto)
+  ];
+  if (existing > 0) {
+    // Update existing row
+    const range = encodeURIComponent(DB_SHEET + '!A' + existing + ':H' + existing);
+    await fetch(
+      'https://sheets.googleapis.com/v4/spreadsheets/' + SHEET_ID +
+      '/values/' + range + '?valueInputOption=RAW',
+      { method: 'PUT',
+        headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ values: [rowData] }) }
+    );
+  } else {
+    // Append new row
+    const range = encodeURIComponent(DB_SHEET + '!A:H');
+    await fetch(
+      'https://sheets.googleapis.com/v4/spreadsheets/' + SHEET_ID +
+      '/values/' + range + ':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS',
+      { method: 'POST',
+        headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ values: [rowData] }) }
+    );
+  }
+}
+
+async function dbFindRow(token, id) {
+  const r = await fetch(
+    'https://sheets.googleapis.com/v4/spreadsheets/' + SHEET_ID +
+    '/values/' + encodeURIComponent(DB_SHEET + '!A:A'),
+    { headers: { Authorization: 'Bearer ' + token } }
+  );
+  if (!r.ok) return -1;
+  const data = await r.json();
+  const rows = data.values || [];
+  for (var i = 1; i < rows.length; i++) {
+    if (rows[i][0] === id) return i + 1; // 1-indexed, skip header
+  }
+  return -1;
+}
+
 function calcTotals(p) {
   const sub = (p.secciones || []).reduce((a, s) => a + s.partidas.reduce((b, i) => b + i.uds * i.jornadas * i.precio, 0), 0);
   const cm = sub * (1 + p.margen / 100);
@@ -544,134 +609,22 @@ function Autocomplete({
     setHits(r);
     setOpen(r.length > 0);
   }, [value, clients]);
-  useEffect(() => {
-    const h = e => {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
-    };
-    document.addEventListener('mousedown', h);
-    return () => document.removeEventListener('mousedown', h);
-  }, []);
-  const IS = {
-    background: '#111827',
-    border: '1px solid #2a2a3a',
-    color: '#e8e6e0',
-    padding: '10px 14px',
-    borderRadius: 8,
-    width: '100%',
-    fontSize: 13,
-    outline: 'none',
-    boxSizing: 'border-box'
-  };
-  return /*#__PURE__*/React.createElement("div", {
-    ref: ref,
-    style: {
-      position: 'relative'
+  useEffect(function() {
+    if (auth.token && dsync === 'idle') {
+      syncDrive();
+      dbLoad(auth.token).then(function(loaded) {
+        if (loaded && loaded.length > 0) {
+          setProjects(function(current) {
+            const merged = [...loaded];
+            current.forEach(function(p) {
+              if (!loaded.find(function(d) { return d.id === p.id; })) merged.push(p);
+            });
+            return merged;
+          });
+          flash('✓ ' + loaded.length + ' presupuestos cargados desde Drive');
+        }
+      }).catch(function(e) { console.warn('DB load error:', e.message); });
     }
-  }, /*#__PURE__*/React.createElement("input", {
-    value: value,
-    onChange: e => { userTyped.current = true; onChange(e.target.value); },
-    placeholder: "Escribe para buscar cliente\u2026",
-    style: IS,
-    onFocus: e => e.target.style.borderColor = '#E8492A',
-    onBlur: e => e.target.style.borderColor = '#2a2a3a'
-  }), open && /*#__PURE__*/React.createElement("div", {
-    style: {
-      position: 'absolute',
-      top: 'calc(100% + 2px)',
-      left: 0,
-      right: 0,
-      zIndex: 300,
-      background: '#111827',
-      border: '1px solid #2a2a3a',
-      borderRadius: 8,
-      maxHeight: 220,
-      overflowY: 'auto',
-      boxShadow: '0 12px 40px rgba(0,0,0,.7)'
-    }
-  }, hits.map((c, i) => /*#__PURE__*/React.createElement("div", {
-    key: i,
-    onMouseDown: () => {
-      onSelect(c);
-      setOpen(false);
-    },
-    style: {
-      padding: '10px 14px',
-      cursor: 'pointer',
-      borderBottom: '1px solid #1a1a2a',
-      fontSize: 13,
-      color: '#e8e6e0'
-    },
-    onMouseEnter: e => e.currentTarget.style.background = '#1e2030',
-    onMouseLeave: e => e.currentTarget.style.background = 'transparent'
-  }, c))));
-}
-
-/* ── MAIN APP ─────────────────────────────────────────────────────────────── */
-function App() {
-  const auth = useAuth();
-  const [view, setView] = useState('lista');
-  const [projects, setProjects] = useState([]);
-  const [cid, setCid] = useState(null);
-  const [showNew, setShowNew] = useState(false);
-  const [nproj, setNproj] = useState({
-    nombre: '',
-    cliente: '',
-    tipo: 'general'
-  });
-  const [addSec, setAddSec] = useState(null);
-  const [newP, setNewP] = useState({
-    concepto: '',
-    uds: 1,
-    jornadas: 1,
-    precio: 0
-  });
-  const [filter, setFilter] = useState('todos');
-  const [q, setQ] = useState('');
-  const [fTipo, setFTipo] = useState('');
-  const [fDias, setFDias] = useState('');
-  const [toast, setToast] = useState({
-    text: '',
-    type: 'ok'
-  });
-  const [pdfBusy, setPdfBusy] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [dsync, setDsync] = useState('idle');
-  const [clients, setClients] = useState(INITIAL_CLIENTS.slice().sort());
-  const [codes, setCodes] = useState(INITIAL_CODES);
-  const cur = projects.find(p => p.id === cid);
-  const flash = (text, type = 'ok') => {
-    setToast({
-      text,
-      type
-    });
-    setTimeout(() => setToast({
-      text: '',
-      type: 'ok'
-    }), 3500);
-  };
-  const upd = fn => setProjects(ps => ps.map(p => p.id === cid ? fn(p) : p));
-  const suggest = useCallback(() => nextCode(codes), [codes]);
-
-  // Sync Drive
-  const syncDrive = useCallback(async () => {
-    if (!auth.token) return;
-    setDsync('loading');
-    try {
-      const [r26, r25] = await Promise.all([sheetGet(auth.token, '2026').catch(() => []), sheetGet(auth.token, '2025').catch(() => [])]);
-      const rows = [...r26, ...r25].filter(r => r[0] && r[0] !== 'Num presu');
-      const nc = [...new Set([...rows.map(r => r[1]).filter(Boolean), ...INITIAL_CLIENTS])].sort();
-      const nk = [...new Set([...rows.map(r => r[0]).filter(Boolean).map(c => String(c).trim()), ...INITIAL_CODES])];
-      setClients(nc);
-      setCodes(nk);
-      setDsync('ok');
-      flash('✓ Drive · ' + nc.length + ' clientes');
-    } catch (e) {
-      setDsync('error');
-      flash('Drive: ' + e.message, 'error');
-    }
-  }, [auth.token]);
-  useEffect(() => {
-    if (auth.token && dsync === 'idle') syncDrive();
   }, [auth.token]);
   useEffect(() => {
     const t = setInterval(() => {
@@ -2282,6 +2235,7 @@ function App() {
         diasRodaje: 0
       };
       setProjects(ps => [proyecto, ...ps]);
+              if (auth.token) dbSave(auth.token, proyecto).catch(function(e) { console.warn('DB create:', e); });
       setCodes(prev => [...new Set([...prev, codigo])]);
       setCid(proyecto.id);
       setView('editor');
