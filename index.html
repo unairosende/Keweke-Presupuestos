@@ -7,7 +7,21 @@
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <style>*{box-sizing:border-box;margin:0;padding:0}body{background:#080b12}</style>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:#161515;font-family:'DM Sans',sans-serif;color:#E1E1E1}
+    ::-webkit-scrollbar{width:4px}
+    ::-webkit-scrollbar-track{background:#161515}
+    ::-webkit-scrollbar-thumb{background:#333;border-radius:2px}
+    input.nospin::-webkit-inner-spin-button,input.nospin::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+    input.nospin{-moz-appearance:textfield}
+    @keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+    @keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+  </style>
 </head>
 <body>
 <div id="root"></div>
@@ -350,7 +364,7 @@ const PLANTILLAS = {
     label: "General",
     descripcion: "Producción completa",
     icon: "🎬",
-    color: "#E8492A",
+    color: "#FF4A31",
     secciones: [{
       nombre: "Preproducción",
       keys: ["Dirección de casting", "Sala de casting", "Guionización / Guión", "Gastos localización técnica"]
@@ -486,7 +500,7 @@ function buildPDF(p, tots, num) {
   const hdr1 = `<table width="100%" style="margin-bottom:22px"><tr><td><img src="${LOGO}" style="height:38px;width:auto"/></td></tr></table>`;
   const hdr2 = `<div style="height:38px;margin-bottom:22px"></div>`;
   const footer = `<div style="margin-top:24px;padding-top:12px;border-top:1px solid #ccc;text-align:center;font-size:7pt;color:#888">C/ Muntaner 479, ático 4º · 08021 Barcelona · CIF B65430381 · www.keweke.com</div>`;
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>@page{size:A4;margin:18mm 22mm}*{box-sizing:border-box;font-family:Arial,sans-serif}body{color:#1a1a1a;font-size:9pt}table{border-collapse:collapse}.page{page-break-after:always}.page:last-child{page-break-after:avoid}</style></head><body>
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>@page{size:A4;margin:18mm 22mm}*{box-sizing:border-box;font-family:'DM Sans',sans-serif}body{color:#1a1a1a;font-size:9pt}table{border-collapse:collapse}.page{page-break-after:always}.page:last-child{page-break-after:avoid}</style></head><body>
 <div class="page">${hdr1}
 <table width="100%" style="border:1px solid #ccc;margin-bottom:10px">
 <tr><td colspan="2" style="padding:5px 8px;font-weight:bold;font-size:8.5pt;border-bottom:1px solid #ccc">PRESUPUESTO</td></tr>
@@ -570,9 +584,9 @@ function Autocomplete({
     onChange: e => { userTyped.current = true; onChange(e.target.value); },
     placeholder: "Escribe para buscar cliente\u2026",
     style: {
-      background: "#111827",
+      background: "#232222",
       border: "1px solid #2a2a3a",
-      color: "#e8e6e0",
+      color: "#E1E1E1",
       padding: "10px 14px",
       borderRadius: 8,
       width: "100%",
@@ -580,8 +594,8 @@ function Autocomplete({
       outline: "none",
       boxSizing: "border-box"
     },
-    onFocus: e => e.target.style.borderColor = "#E8492A",
-    onBlur: e => e.target.style.borderColor = "#2a2a3a"
+    onFocus: e => e.target.style.borderColor = "#FF4A31",
+    onBlur: e => e.target.style.borderColor = "#333232"
   }), open && /*#__PURE__*/React.createElement("div", {
     style: {
       position: "absolute",
@@ -589,7 +603,7 @@ function Autocomplete({
       left: 0,
       right: 0,
       zIndex: 300,
-      background: "#111827",
+      background: "#232222",
       border: "1px solid #2a2a3a",
       borderRadius: 8,
       maxHeight: 220,
@@ -605,9 +619,9 @@ function Autocomplete({
       cursor: "pointer",
       borderBottom: "1px solid #1a1a2a",
       fontSize: 13,
-      color: "#e8e6e0"
+      color: "#E1E1E1"
     },
-    onMouseEnter: e => e.currentTarget.style.background = "#1e2030",
+    onMouseEnter: e => e.currentTarget.style.background = "#2A2929",
     onMouseLeave: e => e.currentTarget.style.background = "transparent"
   }, c))));
 }
@@ -766,9 +780,9 @@ function App() {
     setPdfBusy(false);
   };
   const eCol = {
-    borrador: "#f59e0b",
-    enviado: "#3b82f6",
-    aprobado: "#10b981",
+    borrador: "#FF8C42",
+    enviado: "#5B9BFF",
+    aprobado: "#2ECC8F",
     rechazado: "#ef4444"
   };
   const eLbl = {
@@ -778,8 +792,11 @@ function App() {
     rechazado: "Rechazado"
   };
   const filtrados = proyectos.filter(p => {
+    // Estado filter
     if (filter !== "todos" && p.estado !== filter) return false;
+    // Tipo filter
     if (filterTipo && p.tipo !== filterTipo) return false;
+    // Días de rodaje filter
     if (filterDias) {
       const dias = p.diasRodaje || 0;
       if (filterDias === "1" && dias !== 1) return false;
@@ -787,17 +804,25 @@ function App() {
       if (filterDias === "3" && dias < 3) return false;
       if (filterDias === "5" && dias < 5) return false;
     }
+    // Text search — AND with other filters
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
-      return (p.nombre || "").toLowerCase().includes(q) || (p.cliente || "").toLowerCase().includes(q) || (p.descripcion || "").toLowerCase().includes(q) || (p.localizacion || "").toLowerCase().includes(q) || (p.codigo || "").toLowerCase().includes(q);
+      const matchesSearch = (
+        (p.nombre || "").toLowerCase().includes(q) ||
+        (p.cliente || "").toLowerCase().includes(q) ||
+        (p.descripcion || "").toLowerCase().includes(q) ||
+        (p.localizacion || "").toLowerCase().includes(q) ||
+        (p.codigo || "").toLowerCase().includes(q)
+      );
+      if (!matchesSearch) return false;
     }
     return true;
   });
   const grp = cur ? cur.secciones : [];
   const IS = {
-    background: "#111827",
+    background: "#232222",
     border: "1px solid #1e2030",
-    color: "#d1d5db",
+    color: "#C0BEBE",
     padding: "8px 12px",
     borderRadius: 6,
     fontSize: 12,
@@ -807,16 +832,16 @@ function App() {
   };
   const LS = {
     fontSize: 9,
-    color: "#4b5563",
+    color: "#5A5858",
     letterSpacing: 1,
     display: "block",
     marginBottom: 5,
     textTransform: "uppercase"
   };
   const driveColor = {
-    idle: "#2a2a3a",
-    loading: "#f59e0b",
-    ok: "#10b981",
+    idle: "#333232",
+    loading: "#FF8C42",
+    ok: "#2ECC8F",
     error: "#ef4444"
   };
   const driveText = {
@@ -828,11 +853,11 @@ function App() {
   return /*#__PURE__*/React.createElement("div", {
     style: {
       minHeight: "100vh",
-      background: "#080b12",
-      color: "#e8e6e0",
+      background: "#161515",
+      color: "#E1E1E1",
       fontFamily: "'Georgia',serif"
     }
-  }, /*#__PURE__*/React.createElement("style", null, `@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}@keyframes fsin{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:#080b12}::-webkit-scrollbar-thumb{background:#1e2030;border-radius:2px}input.no-spin::-webkit-inner-spin-button,input.no-spin::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}input.no-spin{-moz-appearance:textfield}`), toast.text && /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("style", null, `@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}@keyframes fsin{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:#161515}::-webkit-scrollbar-thumb{background:#1e2030;border-radius:2px}input.no-spin::-webkit-inner-spin-button,input.no-spin::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}input.no-spin{-moz-appearance:textfield}`), toast.text && /*#__PURE__*/React.createElement("div", {
     style: {
       position: "fixed",
       top: 16,
@@ -840,7 +865,7 @@ function App() {
       zIndex: 9999,
       background: toast.type === "error" ? "#1a0808" : "#080f0a",
       border: `1px solid ${toast.type === "error" ? "#ef444455" : "#10b98155"}`,
-      color: toast.type === "error" ? "#ef4444" : "#10b981",
+      color: toast.type === "error" ? "#ef4444" : "#2ECC8F",
       padding: "10px 18px",
       borderRadius: 8,
       fontSize: 12,
@@ -850,7 +875,7 @@ function App() {
     }
   }, toast.text), /*#__PURE__*/React.createElement("header", {
     style: {
-      background: "#0a0d14",
+      background: "#1C1B1B",
       borderBottom: "1px solid #1a1a2a",
       padding: "0 28px",
       height: 56,
@@ -872,7 +897,7 @@ function App() {
     style: {
       background: "none",
       border: "none",
-      color: "#4b5563",
+      color: "#5A5858",
       cursor: "pointer",
       fontSize: 18
     }
@@ -885,13 +910,13 @@ function App() {
     alt: "Keweke"
   }), /*#__PURE__*/React.createElement("span", {
     style: {
-      color: "#1e2030",
+      color: "#2A2929",
       fontSize: 18
     }
   }, "|"), /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 11,
-      color: "#c8a96e",
+      color: "#FF4A31",
       letterSpacing: 3,
       textTransform: "uppercase"
     }
@@ -914,7 +939,7 @@ function App() {
   }), /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 10,
-      color: "#374151"
+      color: "#444242"
     }
   }, driveText[driveStatus]))), /*#__PURE__*/React.createElement("div", {
     style: {
@@ -927,7 +952,7 @@ function App() {
     style: {
       background: "none",
       border: "1px solid #1e2030",
-      color: "#4b5563",
+      color: "#5A5858",
       padding: "6px 13px",
       borderRadius: 6,
       cursor: "pointer",
@@ -944,7 +969,7 @@ function App() {
   }, "\u21BA"), " Sincronizar"), /*#__PURE__*/React.createElement("button", {
     onClick: () => setShowNew(true),
     style: {
-      background: "#E8492A",
+      background: "#FF4A31",
       color: "#fff",
       border: "none",
       padding: "6px 18px",
@@ -957,7 +982,7 @@ function App() {
     !isLoggedIn ? /*#__PURE__*/React.createElement("button", {
       onClick: login,
       disabled: authLoading,
-      style: { background: "#E8492A", color: "#fff", border: "none", padding: "6px 14px", borderRadius: 6, cursor: "pointer", fontSize: 12, fontWeight: "bold", display: "flex", alignItems: "center", gap: 6 }
+      style: { background: "#FF4A31", color: "#fff", border: "none", padding: "6px 14px", borderRadius: 6, cursor: "pointer", fontSize: 12, fontWeight: "bold", display: "flex", alignItems: "center", gap: 6 }
     },
       /*#__PURE__*/React.createElement("svg", { width: "14", height: "14", viewBox: "0 0 24 24", fill: "white" },
         /*#__PURE__*/React.createElement("path", { d: "M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" }),
@@ -967,17 +992,17 @@ function App() {
       ),
       authLoading ? "Conectando…" : "Google"
     ) : /*#__PURE__*/React.createElement("div", {
-      style: { display: "flex", alignItems: "center", gap: 6, padding: "3px 10px 3px 3px", background: "#111827", border: "1px solid #1e2030", borderRadius: 20 }
+      style: { display: "flex", alignItems: "center", gap: 6, padding: "3px 10px 3px 3px", background: "#232222", border: "1px solid #1e2030", borderRadius: 20 }
     },
       user && user.pic && /*#__PURE__*/React.createElement("img", { src: user.pic, style: { width: 22, height: 22, borderRadius: "50%" }, alt: "" }),
-      /*#__PURE__*/React.createElement("span", { style: { fontSize: 11, color: "#6b7280", maxWidth: 100, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, user && user.name),
-      /*#__PURE__*/React.createElement("button", { onClick: logout, style: { background: "none", border: "none", color: "#374151", cursor: "pointer", fontSize: 10, padding: 0 }, title: "Cerrar sesión" }, "✕")
+      /*#__PURE__*/React.createElement("span", { style: { fontSize: 11, color: "#7A7878", maxWidth: 100, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, user && user.name),
+      /*#__PURE__*/React.createElement("button", { onClick: logout, style: { background: "none", border: "none", color: "#444242", cursor: "pointer", fontSize: 10, padding: 0 }, title: "Cerrar sesión" }, "✕")
     )
   ), view === "editor" && cur && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
     onClick: exportPDF,
     disabled: pdfBusy,
     style: {
-      background: pdfBusy ? "#1a1a2a" : "#E8492A",
+      background: pdfBusy ? "#2A2929" : "#FF4A31",
       color: "#fff",
       border: "none",
       padding: "6px 14px",
@@ -990,9 +1015,9 @@ function App() {
     onClick: saveDrive,
     disabled: saving || !authToken,
     style: {
-      background: authToken ? "#10b98115" : "#0d0d17",
-      border: "1px solid " + (authToken ? "#10b98133" : "#1e2030"),
-      color: authToken ? "#10b981" : "#374151",
+      background: authToken ? "rgba(46,204,143,0.08)" : "#1C1B1B",
+      border: "1px solid " + (authToken ? "rgba(46,204,143,0.2)" : "#2A2929"),
+      color: authToken ? "#2ECC8F" : "#444242",
       padding: "6px 13px",
       borderRadius: 6,
       cursor: authToken ? "pointer" : "not-allowed",
@@ -1023,7 +1048,7 @@ function App() {
     style: {
       background: "none",
       border: "1px solid #1e2030",
-      color: "#4b5563",
+      color: "#5A5858",
       padding: "6px 13px",
       borderRadius: 6,
       cursor: "pointer",
@@ -1038,9 +1063,9 @@ function App() {
       flash("Enviado");
     },
     style: {
-      background: "#3b82f615",
+      background: "rgba(91,155,255,0.08)",
       border: "1px solid #3b82f633",
-      color: "#3b82f6",
+      color: "#5B9BFF",
       padding: "6px 13px",
       borderRadius: 6,
       cursor: "pointer",
@@ -1056,9 +1081,9 @@ function App() {
       setView("lista");
     },
     style: {
-      background: "#10b98115",
+      background: "rgba(46,204,143,0.08)",
       border: "1px solid #10b98133",
-      color: "#10b981",
+      color: "#2ECC8F",
       padding: "6px 13px",
       borderRadius: 6,
       cursor: "pointer",
@@ -1072,7 +1097,7 @@ function App() {
     }
   }, driveStatus === "idle" && /*#__PURE__*/React.createElement("div", {
     style: {
-      background: "#0a0d14",
+      background: "#1C1B1B",
       border: "1px solid #1e2030",
       borderRadius: 10,
       padding: "14px 20px",
@@ -1084,14 +1109,14 @@ function App() {
   }, /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 12,
-      color: "#4b5563"
+      color: "#5A5858"
     }
   }, "Pulsa Sincronizar para conectar con tu Sheet master de Keweke y actualizar clientes y numeraci\xF3n"), /*#__PURE__*/React.createElement("button", {
     onClick: syncDrive,
     style: {
       background: "#E8492A15",
       border: "1px solid #E8492A44",
-      color: "#E8492A",
+      color: "#FF4A31",
       padding: "7px 16px",
       borderRadius: 6,
       cursor: "pointer",
@@ -1107,23 +1132,23 @@ function App() {
   }, [{
     l: "Total",
     v: proyectos.length,
-    c: "#c8a96e"
+    c: "#FF4A31"
   }, {
     l: "Aprobados",
     v: proyectos.filter(p => p.estado === "aprobado").length,
-    c: "#10b981"
+    c: "#2ECC8F"
   }, {
     l: "En revisión",
     v: proyectos.filter(p => p.estado === "enviado").length,
-    c: "#3b82f6"
+    c: "#5B9BFF"
   }, {
     l: "Facturado",
     v: fEUR(proyectos.filter(p => p.estado === "aprobado").reduce((s, p) => s + calcTotals(p).total, 0)),
-    c: "#10b981"
+    c: "#2ECC8F"
   }].map(s => /*#__PURE__*/React.createElement("div", {
     key: s.l,
     style: {
-      background: "#0a0d14",
+      background: "#1C1B1B",
       border: "1px solid #1a1a2a",
       borderRadius: 10,
       padding: "16px 20px"
@@ -1137,14 +1162,14 @@ function App() {
   }, s.v), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 10,
-      color: "#374151",
+      color: "#444242",
       marginTop: 3,
       letterSpacing: 1,
       textTransform: "uppercase"
     }
   }, s.l)))), /*#__PURE__*/React.createElement("div", {
     style: {
-      background: "#0a0d14",
+      background: "#1C1B1B",
       border: "1px solid #1a1a2a",
       borderRadius: 10,
       padding: "16px 18px",
@@ -1175,15 +1200,18 @@ function App() {
     key: e,
     onClick: () => setFilter(e),
     style: {
-      background: filter === e ? "#1e2030" : "none",
-      border: `1px solid ${filter === e ? "#374151" : "#1a1a2a"}`,
-      color: filter === e ? "#e8e6e0" : "#374151",
-      padding: "4px 11px",
+      background: filter === e ? "#FF4A31" : "transparent",
+      border: "1px solid " + (filter === e ? "#FF4A31" : "#333232"),
+      color: filter === e ? "#fff" : "#7A7878",
+      padding: "5px 14px",
       borderRadius: 20,
       cursor: "pointer",
       fontSize: 10,
       textTransform: "uppercase",
-      letterSpacing: 1
+      letterSpacing: 1.5,
+      fontWeight: filter === e ? 600 : 400,
+      fontFamily: "'DM Sans', sans-serif",
+      transition: "all 0.15s"
     }
   }, e))), /*#__PURE__*/React.createElement("select", {
     value: filterTipo,
@@ -1252,22 +1280,23 @@ function App() {
         setView("editor");
       },
       style: {
-        background: "#0a0d14",
-        border: "1px solid #1a1a2a",
+        background: "#1C1B1B",
+        border: "1px solid #2A2929",
         borderRadius: 10,
         padding: "16px 20px",
         cursor: "pointer",
         display: "flex",
         alignItems: "center",
-        justifyContent: "space-between"
+        justifyContent: "space-between",
+        transition: "border-color 0.15s, background 0.15s"
       },
       onMouseEnter: e => {
-        e.currentTarget.style.borderColor = "#2a2a3a";
-        e.currentTarget.style.background = "#0d1018";
+        e.currentTarget.style.borderColor = "#FF4A31";
+        e.currentTarget.style.background = "#201F1F";
       },
       onMouseLeave: e => {
-        e.currentTarget.style.borderColor = "#1a1a2a";
-        e.currentTarget.style.background = "#0a0d14";
+        e.currentTarget.style.borderColor = "#2A2929";
+        e.currentTarget.style.background = "#1C1B1B";
       }
     }, /*#__PURE__*/React.createElement("div", {
       style: {
@@ -1275,11 +1304,7 @@ function App() {
         alignItems: "center",
         gap: 14
       }
-    }, /*#__PURE__*/React.createElement("span", {
-      style: {
-        fontSize: 20
-      }
-    }, pl?.icon || "🎬"), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
       style: {
         display: "flex",
         alignItems: "center",
@@ -1288,25 +1313,24 @@ function App() {
       }
     }, /*#__PURE__*/React.createElement("span", {
       style: {
-        fontSize: 14,
-        color: "#e8e6e0"
-      }
-    }, p.nombre), /*#__PURE__*/React.createElement("span", {
-      style: {
-        fontSize: 10,
-        color: pl?.color || "#E8492A",
-        background: (pl?.color || "#E8492A") + "18",
-        border: `1px solid ${pl?.color || "#E8492A"}33`,
-        padding: "1px 7px",
-        borderRadius: 4,
-        fontFamily: "monospace",
-        letterSpacing: 1
+        fontSize: 13,
+        fontWeight: 700,
+        color: "#FF4A31",
+        fontFamily: "'DM Sans', monospace",
+        letterSpacing: "0.5px",
+        flexShrink: 0
       }
     }, p.codigo), /*#__PURE__*/React.createElement("span", {
       style: {
+        fontSize: 14,
+        fontWeight: 500,
+        color: "#E1E1E1"
+      }
+    }, p.nombre), /*#__PURE__*/React.createElement("span", {
+      style: {
         fontSize: 9,
-        color: "#374151",
-        background: "#111827",
+        color: "#444242",
+        background: "#232222",
         padding: "1px 6px",
         borderRadius: 4
       }
@@ -1318,19 +1342,19 @@ function App() {
     }, "\u2713 Drive")), /*#__PURE__*/React.createElement("div", {
       style: {
         fontSize: 11,
-        color: "#374151",
+        color: "#444242",
         marginBottom: p.descripcion || p.localizacion ? 3 : 0
       }
     }, p.cliente, " \xB7 ", p.fecha, " \xB7 v", p.version, p.diasRodaje > 0 ? ` · ${p.diasRodaje}d rodaje` : ""), (p.descripcion || p.localizacion) && /*#__PURE__*/React.createElement("div", {
       style: {
         fontSize: 10,
-        color: "#374151",
+        color: "#444242",
         display: "flex",
         gap: 8
       }
     }, p.localizacion && /*#__PURE__*/React.createElement("span", null, "\uD83D\uDCCD ", p.localizacion), p.descripcion && /*#__PURE__*/React.createElement("span", {
       style: {
-        color: "#2a2a3a",
+        color: "#333232",
         maxWidth: 300,
         overflow: "hidden",
         textOverflow: "ellipsis",
@@ -1345,7 +1369,7 @@ function App() {
     }, /*#__PURE__*/React.createElement("span", {
       style: {
         fontSize: 14,
-        color: "#c8a96e"
+        color: "#FF4A31"
       }
     }, fEUR(total)), /*#__PURE__*/React.createElement("span", {
       style: {
@@ -1361,7 +1385,7 @@ function App() {
   }), filtrados.length === 0 && /*#__PURE__*/React.createElement("div", {
     style: {
       textAlign: "center",
-      color: "#1e2030",
+      color: "#2A2929",
       padding: "60px 0",
       fontSize: 13
     }
@@ -1418,7 +1442,7 @@ function App() {
       style: {
         background: "none",
         border: "none",
-        color: "#E8492A",
+        color: "#FF4A31",
         fontSize: 14,
         fontFamily: "monospace",
         fontWeight: "bold",
@@ -1429,9 +1453,9 @@ function App() {
     })), /*#__PURE__*/React.createElement("span", {
       style: {
         fontSize: 9,
-        background: (pl?.color || "#E8492A") + "20",
-        color: pl?.color || "#E8492A",
-        border: `1px solid ${pl?.color || "#E8492A"}33`,
+        background: (pl?.color || "#FF4A31") + "20",
+        color: pl?.color || "#FF4A31",
+        border: `1px solid ${pl?.color || "#FF4A31"}33`,
         padding: "3px 10px",
         borderRadius: 4,
         letterSpacing: 1,
@@ -1447,7 +1471,7 @@ function App() {
         background: "none",
         border: "none",
         borderBottom: "1px solid #1e2030",
-        color: "#e8e6e0",
+        color: "#E1E1E1",
         fontSize: 18,
         flex: 1,
         padding: "4px 0",
@@ -1485,7 +1509,7 @@ function App() {
       style: IS
     }))), /*#__PURE__*/React.createElement("div", {
       style: {
-        background: "#0a0d14",
+        background: "#1C1B1B",
         border: "1px solid #1e2030",
         borderRadius: 10,
         padding: "18px 20px",
@@ -1494,7 +1518,7 @@ function App() {
     }, /*#__PURE__*/React.createElement("div", {
       style: {
         fontSize: 9,
-        color: "#4b5563",
+        color: "#5A5858",
         letterSpacing: 2,
         textTransform: "uppercase",
         marginBottom: 14
@@ -1587,19 +1611,19 @@ function App() {
           alignItems: "center",
           marginBottom: 8,
           paddingBottom: 6,
-          borderBottom: `1px solid ${pl?.color || "#E8492A"}22`
+          borderBottom: `1px solid ${pl?.color || "#FF4A31"}22`
         }
       }, /*#__PURE__*/React.createElement("span", {
         style: {
           fontSize: 9,
           letterSpacing: 3,
           textTransform: "uppercase",
-          color: pl?.color || "#E8492A"
+          color: pl?.color || "#FF4A31"
         }
       }, sec.nombre), /*#__PURE__*/React.createElement("span", {
         style: {
           fontSize: 11,
-          color: secTotal > 0 ? "#c8a96e" : "#374151"
+          color: secTotal > 0 ? "#FF4A31" : "#444242"
         }
       }, fEUR(secTotal))), /*#__PURE__*/React.createElement("div", {
         style: {
@@ -1614,7 +1638,7 @@ function App() {
         key: i,
         style: {
           fontSize: 9,
-          color: "#374151",
+          color: "#444242",
           textTransform: "uppercase",
           letterSpacing: 1,
           textAlign: i >= 1 && i <= 3 ? "center" : "left"
@@ -1644,7 +1668,7 @@ function App() {
           background: "none",
           border: "none",
           borderBottom: "1px solid #1a1a2a",
-          color: "#bbb",
+          color: "#A8A6A6",
           fontSize: 12,
           outline: "none",
           padding: "3px 0"
@@ -1708,7 +1732,7 @@ function App() {
           padding: "3px 6px",
           textAlign: "right",
           fontSize: 12,
-          color: item.precio > 0 ? "#c8a96e" : "#374151"
+          color: item.precio > 0 ? "#FF4A31" : "#444242"
         },
         className: "no-spin"
       }), /*#__PURE__*/React.createElement("button", {
@@ -1722,13 +1746,13 @@ function App() {
         style: {
           background: "none",
           border: "none",
-          color: "#1e2030",
+          color: "#2A2929",
           cursor: "pointer",
           fontSize: 15,
           padding: 0
         },
         onMouseEnter: e => e.target.style.color = "#ef4444",
-        onMouseLeave: e => e.target.style.color = "#1e2030"
+        onMouseLeave: e => e.target.style.color = "#2A2929"
       }, "\xD7"))), /*#__PURE__*/React.createElement("div", {
         style: {
           display: "grid",
@@ -1742,11 +1766,11 @@ function App() {
         style: {
           textAlign: "right",
           fontSize: 11,
-          color: secTotal > 0 ? "#c8a96e" : "#374151"
+          color: secTotal > 0 ? "#FF4A31" : "#444242"
         }
       }, fEUR(secTotal)), /*#__PURE__*/React.createElement("div", null)), addSecIdx === si ? /*#__PURE__*/React.createElement("div", {
         style: {
-          background: "#0a0d14",
+          background: "#1C1B1B",
           border: "1px solid #1e2030",
           borderRadius: 7,
           padding: 14,
@@ -1811,7 +1835,7 @@ function App() {
         style: {
           background: "none",
           border: "1px solid #1e2030",
-          color: "#4b5563",
+          color: "#5A5858",
           padding: "5px 14px",
           borderRadius: 5,
           cursor: "pointer",
@@ -1840,7 +1864,7 @@ function App() {
           flash("Partida añadida");
         },
         style: {
-          background: "#c8a96e",
+          background: "#FF4A31",
           color: "#0a0a0f",
           border: "none",
           padding: "5px 14px",
@@ -1862,7 +1886,7 @@ function App() {
         style: {
           background: "none",
           border: "1px dashed #1e2030",
-          color: "#374151",
+          color: "#444242",
           padding: "6px",
           borderRadius: 5,
           cursor: "pointer",
@@ -1875,7 +1899,7 @@ function App() {
     })), /*#__PURE__*/React.createElement("div", {
       style: {
         padding: "28px 20px",
-        background: "#0a0d14",
+        background: "#1C1B1B",
         overflowY: "auto"
       }
     }, /*#__PURE__*/React.createElement("div", {
@@ -1897,7 +1921,7 @@ function App() {
     }, eLbl[cur.estado]), /*#__PURE__*/React.createElement("div", {
       style: {
         fontSize: 9,
-        color: "#374151",
+        color: "#444242",
         marginTop: 2
       }
     }, cur.codigo, " \xB7 v", cur.version)), (() => {
@@ -1909,7 +1933,7 @@ function App() {
       }, /*#__PURE__*/React.createElement("div", {
         style: {
           fontSize: 9,
-          color: "#374151",
+          color: "#444242",
           letterSpacing: 2,
           textTransform: "uppercase",
           marginBottom: 6
@@ -1924,9 +1948,9 @@ function App() {
         key: s.id,
         onClick: () => setCid(s.id),
         style: {
-          background: s.id === cid ? "#E8492A" : "#111827",
-          border: `1px solid ${s.id === cid ? "#E8492A" : "#1e2030"}`,
-          color: s.id === cid ? "#fff" : "#6b7280",
+          background: s.id === cid ? "#FF4A31" : "#232222",
+          border: `1px solid ${s.id === cid ? "#FF4A31" : "#2A2929"}`,
+          color: s.id === cid ? "#fff" : "#7A7878",
           padding: "3px 10px",
           borderRadius: 4,
           cursor: "pointer",
@@ -1988,31 +2012,31 @@ function App() {
           justifyContent: "space-between",
           marginBottom: 6,
           fontSize: 10,
-          color: "#374151"
+          color: "#444242"
         }
       }, /*#__PURE__*/React.createElement("span", null, s.nombre), /*#__PURE__*/React.createElement("span", null, fEUR(st))) : null;
     }), /*#__PURE__*/React.createElement("div", {
       style: {
         height: 1,
-        background: "#1e2030",
+        background: "#2A2929",
         margin: "10px 0"
       }
     }), [{
       l: "Subtotal",
       v: fEUR(sub),
-      c: "#6b7280"
+      c: "#7A7878"
     }, {
       l: `Margen (${cur.margen}%)`,
       v: fEUR(conMargen - sub),
-      c: "#6b7280"
+      c: "#7A7878"
     }, {
       l: "Base imponible",
       v: fEUR(conMargen),
-      c: "#9ca3af"
+      c: "#A8A6A6"
     }, {
       l: `IVA (${cur.iva}%)`,
       v: fEUR(iva),
-      c: "#6b7280"
+      c: "#7A7878"
     }].map(r => /*#__PURE__*/React.createElement("div", {
       key: r.l,
       style: {
@@ -2033,13 +2057,13 @@ function App() {
     }, /*#__PURE__*/React.createElement("span", {
       style: {
         fontSize: 12,
-        color: "#e8e6e0",
+        color: "#E1E1E1",
         letterSpacing: 1
       }
     }, "TOTAL"), /*#__PURE__*/React.createElement("span", {
       style: {
         fontSize: 18,
-        color: "#c8a96e",
+        color: "#FF4A31",
         fontWeight: "bold"
       }
     }, fEUR(total)))), /*#__PURE__*/React.createElement("div", {
@@ -2052,7 +2076,7 @@ function App() {
       onClick: exportPDF,
       disabled: pdfBusy,
       style: {
-        background: "#E8492A",
+        background: "#FF4A31",
         color: "#fff",
         border: "none",
         padding: "10px",
@@ -2065,9 +2089,9 @@ function App() {
       onClick: saveDrive,
       disabled: saving || driveStatus !== "ok",
       style: {
-        background: driveStatus === "ok" ? "#10b98112" : "#0d0d17",
-        border: `1px solid ${driveStatus === "ok" ? "#10b98130" : "#1e2030"}`,
-        color: driveStatus === "ok" ? "#10b981" : "#374151",
+        background: driveStatus === "ok" ? "#10b98112" : "#1C1B1B",
+        border: `1px solid ${driveStatus === "ok" ? "rgba(46,204,143,0.12)" : "#2A2929"}`,
+        color: driveStatus === "ok" ? "#2ECC8F" : "#444242",
         padding: "9px",
         borderRadius: 8,
         cursor: driveStatus === "ok" ? "pointer" : "not-allowed",
@@ -2076,7 +2100,7 @@ function App() {
     }, saving ? "Guardando…" : driveStatus === "ok" ? "↑ Guardar en Sheet master" : "Drive no conectado")), cur.savedToDrive && /*#__PURE__*/React.createElement("div", {
       style: {
         fontSize: 9,
-        color: "#10b98133",
+        color: "rgba(46,204,143,0.2)",
         textAlign: "center",
         marginTop: 8
       }
@@ -2093,7 +2117,7 @@ function App() {
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
-      background: "#0a0d14",
+      background: "#1C1B1B",
       border: "1px solid #1e2030",
       borderRadius: 14,
       padding: 32,
@@ -2110,7 +2134,7 @@ function App() {
   }, /*#__PURE__*/React.createElement("h3", {
     style: {
       margin: 0,
-      color: "#c8a96e",
+      color: "#FF4A31",
       fontSize: 12,
       letterSpacing: 2,
       textTransform: "uppercase"
@@ -2132,7 +2156,7 @@ function App() {
   }, "C\xD3DIGO"), /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 14,
-      color: "#E8492A",
+      color: "#FF4A31",
       fontFamily: "monospace",
       fontWeight: "bold",
       letterSpacing: 2
@@ -2187,8 +2211,8 @@ function App() {
       tipo: key
     })),
     style: {
-      background: nproj.tipo === key ? pl.color + "20" : "#111827",
-      border: `2px solid ${nproj.tipo === key ? pl.color : "#1e2030"}`,
+      background: nproj.tipo === key ? pl.color + "20" : "#232222",
+      border: `2px solid ${nproj.tipo === key ? pl.color : "#2A2929"}`,
       borderRadius: 10,
       padding: "14px 10px",
       cursor: "pointer",
@@ -2203,13 +2227,13 @@ function App() {
     style: {
       fontSize: 13,
       fontWeight: "bold",
-      color: nproj.tipo === key ? pl.color : "#6b7280",
+      color: nproj.tipo === key ? pl.color : "#7A7878",
       marginBottom: 3
     }
   }, pl.label), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 9,
-      color: "#374151",
+      color: "#444242",
       lineHeight: 1.3
     }
   }, pl.descripcion))))), /*#__PURE__*/React.createElement("div", {
@@ -2230,7 +2254,7 @@ function App() {
     style: {
       background: "none",
       border: "1px solid #1e2030",
-      color: "#4b5563",
+      color: "#5A5858",
       padding: "9px 20px",
       borderRadius: 6,
       cursor: "pointer",
@@ -2271,7 +2295,7 @@ function App() {
     },
     disabled: !nproj.nombre || !nproj.cliente,
     style: {
-      background: !nproj.nombre || !nproj.cliente ? "#1e2030" : PLANTILLAS[nproj.tipo]?.color || "#E8492A",
+      background: !nproj.nombre || !nproj.cliente ? "#2A2929" : PLANTILLAS[nproj.tipo]?.color || "#FF4A31",
       color: "#fff",
       border: "none",
       padding: "9px 24px",
