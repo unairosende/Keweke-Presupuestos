@@ -128,16 +128,21 @@ async function sheetAppend(token, row) {
   var b64 = b64map[tipo] || b64map.general;
 
   // Load template with SheetJS
-  var wb = XLSX.read(b64, { type: 'base64' });
+  var wb = XLSX.read(b64, { type: 'base64', cellStyles: true, cellNF: true, cellDates: true });
   var ws = wb.Sheets[wb.SheetNames[0]];
 
   // Helper: set cell value
   function setCell(r, c, v) {
     var addr = XLSX.utils.encode_cell({ r: r - 1, c: c - 1 });
     if (!ws[addr]) ws[addr] = {};
+    // Preserve existing style (s) and number format (z) from template
+    var existingStyle = ws[addr].s;
+    var existingNF = ws[addr].z;
     ws[addr].v = v;
     ws[addr].t = typeof v === 'number' ? 'n' : 's';
     if (ws[addr].f) delete ws[addr].f;
+    if (existingStyle) ws[addr].s = existingStyle;
+    if (existingNF) ws[addr].z = existingNF;
   }
 
   // Helper: find row where col B matches text (partial)
@@ -187,7 +192,7 @@ async function sheetAppend(token, row) {
   setCell(markupRows[tipo] || 115, 3, (proyecto.margen || 20) / 100);
 
   // Export to ArrayBuffer
-  var xlsxBuf = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
+  var xlsxBuf = XLSX.write(wb, { type: 'array', bookType: 'xlsx', cellStyles: true });
 
   // Upload to Drive via multipart
   var codigo   = (proyecto.codigo || '').trim();
