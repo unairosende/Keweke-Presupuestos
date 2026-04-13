@@ -609,6 +609,16 @@ function Autocomplete({
 
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
 function App() {
+  // Auth
+  const _auth = useGoogleAuthHook();
+  const authToken    = _auth.token;
+  const authLoading  = _auth.busy;
+  const authError    = _auth.err;
+  const login        = _auth.login;
+  const logout       = _auth.logout;
+  const isLoggedIn   = _auth.ok;
+  const user         = _auth.user;
+
   const [view, setView] = useState("lista");
   const [proyectos, setProyectos] = useState([]);
   const [cid, setCid] = useState(null);
