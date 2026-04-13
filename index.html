@@ -14,7 +14,7 @@
 
 <!-- ═══ CONFIGURACIÓN — edita solo estas 2 líneas ════════════════════════ -->
 <script>
-var GOOGLE_CLIENT_ID = "YOUR_GOOGLE_CLIENT_ID"; // ← tu Client ID de Google
+var GOOGLE_CLIENT_ID = "347909122797-l72cov79uqrs35h2c4619f46h8titquk.apps.googleusercontent.com"; // ← tu Client ID de Google
 var SHEET_ID         = "1q47UNKPD1yOck3LRBcogbDdpjkVI4AYOE0pU-4MeJiE";
 </script>
 <!-- ════════════════════════════════════════════════════════════════════════ -->
@@ -504,8 +504,10 @@ function buildPDF(p, tots, num) {
   (p.secciones || []).forEach(sec => {
     const ct = sec.partidas.reduce((s, i) => s + i.uds * i.jornadas * i.precio, 0);
     catRows += '<tr style="background:#f2f2f2"><td style="padding:5px 6px;font-size:8.5pt;font-weight:bold;color:#555;border-bottom:1px solid #ccc" colspan="2">' + sec.nombre + '</td><td colspan="4" style="border-bottom:1px solid #ccc"></td><td style="padding:5px 6px;font-size:8.5pt;font-weight:bold;text-align:right;border-bottom:1px solid #ccc">' + fN(ct) + '</td></tr>';
-    sec.partidas.filter(it => it.uds * it.jornadas * it.precio > 0).forEach(it => {
-      catRows += '<tr><td style="padding:4px 6px;font-size:8.5pt;border-bottom:1px solid #eee">' + it.concepto + '</td><td style="padding:4px;font-size:8.5pt;text-align:center;border-bottom:1px solid #eee;width:32px">' + it.uds + '</td><td style="padding:4px;font-size:8.5pt;text-align:center;border-bottom:1px solid #eee;width:42px">' + it.jornadas + '</td><td style="padding:4px 6px;font-size:8.5pt;text-align:right;border-bottom:1px solid #eee;width:70px">' + (it.precio > 0 ? fN(it.precio) : '€0,00') + '</td><td style="border-bottom:1px solid #eee;width:28px"></td><td style="padding:4px 6px;font-size:8.5pt;text-align:right;border-bottom:1px solid #eee;width:70px">' + fN(it.uds * it.jornadas * it.precio) + '</td><td style="border-bottom:1px solid #eee;width:70px"></td></tr>';
+    sec.partidas.filter(it => !(it.uds === 0 && it.jornadas === 0)).forEach(it => {
+      var dtoVal = it.dto || 0;
+      var lineTotal = it.uds * it.jornadas * it.precio * (1 - dtoVal / 100);
+      catRows += '<tr><td style="padding:4px 6px;font-size:8.5pt;border-bottom:1px solid #eee">' + it.concepto + '</td><td style="padding:4px;font-size:8.5pt;text-align:center;border-bottom:1px solid #eee;width:32px">' + it.uds + '</td><td style="padding:4px;font-size:8.5pt;text-align:center;border-bottom:1px solid #eee;width:42px">' + it.jornadas + '</td><td style="padding:4px 6px;font-size:8.5pt;text-align:right;border-bottom:1px solid #eee;width:70px">' + (it.precio > 0 ? fN(it.precio) : '€0,00') + '</td><td style="padding:4px;font-size:8.5pt;text-align:center;border-bottom:1px solid #eee;width:30px">' + (dtoVal > 0 ? dtoVal + '%' : '') + '</td><td style="padding:4px 6px;font-size:8.5pt;text-align:right;border-bottom:1px solid #eee;width:70px">' + fN(lineTotal) + '</td><td style="padding:4px;border-bottom:1px solid #eee;width:70px"></td></tr>';
     });
   });
   let sumRows = '';
@@ -1574,7 +1576,7 @@ function App() {
       },
       placeholder: "Otros formatos, versiones, idiomas..."
     }))), (cur.secciones || []).map((sec, si) => {
-      const st = sec.partidas.reduce((s, i) => s + i.uds * i.jornadas * i.precio, 0);
+      const st = sec.partidas.reduce((s, i) => s + i.uds * i.jornadas * i.precio * (1 - (i.dto||0)/100), 0);
       return /*#__PURE__*/React.createElement("div", {
         key: si,
         style: {
@@ -1604,13 +1606,13 @@ function App() {
       }, fEUR(st))), /*#__PURE__*/React.createElement("div", {
         style: {
           display: 'grid',
-          gridTemplateColumns: '2.4fr 60px 68px 110px 26px',
+          gridTemplateColumns: '2.4fr 55px 65px 60px 105px 26px',
           gap: 6,
           marginBottom: 5,
           paddingBottom: 3,
           borderBottom: '1px solid #111827'
         }
-      }, ['Concepto', 'Uds', 'Jornadas', '€ / ud', ''].map((h, i) => /*#__PURE__*/React.createElement("div", {
+      }, ['Concepto', 'Uds', 'Jornadas', 'Dto %', '€ / ud', ''].map((h, i) => /*#__PURE__*/React.createElement("div", {
         key: i,
         style: {
           fontSize: 9,
@@ -1623,7 +1625,7 @@ function App() {
         key: item.id,
         style: {
           display: 'grid',
-          gridTemplateColumns: '2.4fr 60px 68px 110px 26px',
+          gridTemplateColumns: '2.4fr 55px 65px 60px 105px 26px',
           gap: 6,
           marginBottom: 5,
           alignItems: 'center'
@@ -1692,6 +1694,29 @@ function App() {
       }), /*#__PURE__*/React.createElement("input", {
         type: "number",
         min: 0,
+        max: 100,
+        value: item.dto || 0,
+        className: "nospin",
+        onChange: e => upd(p => ({
+          ...p,
+          secciones: p.secciones.map((s, x) => x !== si ? s : {
+            ...s,
+            partidas: s.partidas.map(y => y.id !== item.id ? y : {
+              ...y,
+              dto: parseFloat(e.target.value) || 0
+            })
+          })
+        })),
+        style: {
+          ...IS,
+          padding: '3px 6px',
+          textAlign: 'center',
+          fontSize: 12,
+          color: (item.dto || 0) > 0 ? '#3b82f6' : '#374151'
+        }
+      }), /*#__PURE__*/React.createElement("input", {
+        type: "number",
+        min: 0,
         value: item.precio,
         onChange: e => upd(p => ({
           ...p,
@@ -1732,7 +1757,7 @@ function App() {
       }, "\xD7"))), /*#__PURE__*/React.createElement("div", {
         style: {
           display: 'grid',
-          gridTemplateColumns: '2.4fr 60px 68px 110px 26px',
+          gridTemplateColumns: '2.4fr 55px 65px 60px 105px 26px',
           gap: 6,
           paddingTop: 4,
           borderTop: '1px solid #0d1018',
@@ -1977,7 +2002,7 @@ function App() {
         marginBottom: 22
       }
     }, (cur.secciones || []).map((s, i) => {
-      const st = s.partidas.reduce((a, it) => a + it.uds * it.jornadas * it.precio, 0);
+      const st = s.partidas.reduce((a, it) => a + it.uds * it.jornadas * it.precio * (1 - (it.dto||0)/100), 0);
       return st > 0 ? /*#__PURE__*/React.createElement("div", {
         key: i,
         style: {
