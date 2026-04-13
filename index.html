@@ -476,9 +476,13 @@ function buildPDF(p, tots, num) {
   }).format(n || 0);
   const catRows = (p.secciones || []).map(sec => {
     const ct = sec.partidas.reduce((s, i) => s + i.uds * i.jornadas * i.precio, 0);
-    return `<tr style="background:#f2f2f2"><td style="padding:5px 6px;font-size:8.5pt;font-weight:bold;color:#555;border-bottom:1px solid #ccc" colspan="2">${sec.nombre}</td><td colspan="4" style="border-bottom:1px solid #ccc"></td><td style="padding:5px 6px;font-size:8.5pt;font-weight:bold;text-align:right;border-bottom:1px solid #ccc">${fN(ct)}</td></tr>` + sec.partidas.filter(it => !(it.uds === 0 && it.jornadas === 0)).map(it => `<tr><td style="padding:4px 6px;font-size:8.5pt;border-bottom:1px solid #eee">${it.concepto}</td><td style="padding:4px;font-size:8.5pt;text-align:center;border-bottom:1px solid #eee;width:32px">${it.uds}</td><td style="padding:4px;font-size:8.5pt;text-align:center;border-bottom:1px solid #eee;width:42px">${it.jornadas}</td><td style="padding:4px 6px;font-size:8.5pt;text-align:right;border-bottom:1px solid #eee;width:70px">${it.precio > 0 ? fN(it.precio) : "€0,00"}</td><td style="border-bottom:1px solid #eee;width:28px"></td><td style="padding:4px 6px;font-size:8.5pt;text-align:right;border-bottom:1px solid #eee;width:70px">${fN(it.uds * it.jornadas * it.precio)}</td><td style="padding:4px;border-bottom:1px solid #eee;width:70px"></td></tr>`).join("");
+    return `<tr style="background:#f2f2f2"><td style="padding:5px 6px;font-size:8.5pt;font-weight:bold;color:#555;border-bottom:1px solid #ccc" colspan="2">${sec.nombre}</td><td colspan="4" style="border-bottom:1px solid #ccc"></td><td style="padding:5px 6px;font-size:8.5pt;font-weight:bold;text-align:right;border-bottom:1px solid #ccc">${fN(ct)}</td></tr>` + sec.partidas.filter(it => !(it.uds === 0 && it.jornadas === 0)).map(it => {
+      const dtoV = it.dto || 0;
+      const lineT = it.uds * it.jornadas * it.precio * (1 - dtoV / 100);
+      return `<tr><td style="padding:4px 6px;font-size:8.5pt;border-bottom:1px solid #eee">${it.concepto}</td><td style="padding:4px;font-size:8.5pt;text-align:center;border-bottom:1px solid #eee;width:32px">${it.uds}</td><td style="padding:4px;font-size:8.5pt;text-align:center;border-bottom:1px solid #eee;width:42px">${it.jornadas}</td><td style="padding:4px 6px;font-size:8.5pt;text-align:right;border-bottom:1px solid #eee;width:70px">${it.precio > 0 ? fN(it.precio) : "€0,00"}</td><td style="padding:4px;font-size:8.5pt;text-align:center;border-bottom:1px solid #eee;width:30px">${dtoV > 0 ? dtoV + "%" : ""}</td><td style="padding:4px 6px;font-size:8.5pt;text-align:right;border-bottom:1px solid #eee;width:70px">${fN(lineT)}</td><td style="padding:4px;border-bottom:1px solid #eee;width:70px"></td></tr>`;
+    }).join("");
   }).join("");
-  const sumRows = (p.secciones || []).map((sec, i) => `<tr style="background:${i % 2 === 0 ? "#f2f2f2" : "white"}"><td style="padding:5px 8px;font-size:8.5pt">${sec.nombre}</td><td style="padding:5px 8px;font-size:8.5pt;text-align:right">${fN(sec.partidas.reduce((s, it) => s + it.uds * it.jornadas * it.precio, 0))}</td></tr>`).join("");
+  const sumRows = (p.secciones || []).map((sec, i) => `<tr style="background:${i % 2 === 0 ? "#f2f2f2" : "white"}"><td style="padding:5px 8px;font-size:8.5pt">${sec.nombre}</td><td style="padding:5px 8px;font-size:8.5pt;text-align:right">${fN(sec.partidas.reduce((s, it) => s + it.uds * it.jornadas * it.precio * (1-(it.dto||0)/100), 0))}</td></tr>`).join("");
   const hdr1 = `<table width="100%" style="margin-bottom:22px"><tr><td><img src="${LOGO}" style="height:38px;width:auto"/></td></tr></table>`;
   const hdr2 = `<div style="height:38px;margin-bottom:22px"></div>`;
   const footer = `<div style="margin-top:24px;padding-top:12px;border-top:1px solid #ccc;text-align:center;font-size:7pt;color:#888">C/ Muntaner 479, ático 4º · 08021 Barcelona · CIF B65430381 · www.keweke.com</div>`;
@@ -500,6 +504,8 @@ ${p.noIncluye ? `<tr><td style="padding:12px 8px 4px;font-size:8pt;color:#666;ve
 </table>
 <div style="font-size:7pt;font-weight:bold;color:#888;letter-spacing:1px;margin-bottom:3px">RESUMEN PRESUPUESTO</div>
 <table width="100%" style="border:1px solid #ccc">${sumRows}
+<tr style="background:#f8f8f8"><td style="padding:5px 8px;font-size:8.5pt">Sub Total</td><td style="padding:5px 8px;font-size:8.5pt;text-align:right">${fN(sub)}</td></tr>
+<tr style="background:#f8f8f8"><td style="padding:5px 8px;font-size:8.5pt">Mark up productora ${p.margen}%</td><td style="padding:5px 8px;font-size:8.5pt;text-align:right">${fN(conMargen-sub)}</td></tr>
 <tr style="background:#d6d6d6"><td style="padding:6px 8px;font-size:8.5pt;font-weight:bold">Importe Total</td><td style="padding:6px 8px;font-size:8.5pt;font-weight:bold;text-align:right">${fN(conMargen)}</td></tr>
 </table></div>
 <div class="page">${hdr2}
@@ -535,8 +541,9 @@ function Autocomplete({
   const [open, setOpen] = useState(false);
   const [filtered, setFiltered] = useState([]);
   const ref = useRef(null);
+  const userTyped = useRef(false);
   useEffect(() => {
-    if (!value || value.length < 1) {
+    if (!value || !userTyped.current) {
       setFiltered([]);
       setOpen(false);
       return;
@@ -560,7 +567,7 @@ function Autocomplete({
     }
   }, /*#__PURE__*/React.createElement("input", {
     value: value,
-    onChange: e => onChange(e.target.value),
+    onChange: e => { userTyped.current = true; onChange(e.target.value); },
     placeholder: "Escribe para buscar cliente\u2026",
     style: {
       background: "#111827",
@@ -591,9 +598,7 @@ function Autocomplete({
     }
   }, filtered.map((c, i) => /*#__PURE__*/React.createElement("div", {
     key: i,
-    onMouseDown: () => {
-      onSelect(c);
-      setOpen(false);
+    onMouseDown: () => { userTyped.current = false; ;
     },
     style: {
       padding: "10px 14px",
