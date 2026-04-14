@@ -691,8 +691,8 @@ function App() {
   const [pdfBusy, setPdfBusy] = useState(false);
   const [saving, setSaving] = useState(false);
   const [driveStatus, setDriveStatus] = useState("idle");
-  const [clients, setClients] = useState([]);
-  const [allCodes, setAllCodes] = useState([]);
+  const [clients, setClients] = useState(INITIAL_CLIENTS);
+  const [allCodes, setAllCodes] = useState(INITIAL_CODES);
   const cur = proyectos.find(p => p.id === cid);
   const flash = (text, type = "ok") => {
     startTransition(() => {
@@ -735,7 +735,7 @@ function App() {
   useEffect(() => {
     const interval = setInterval(() => {
       if (driveStatus === "ok" && authToken) syncDrive();
-    }, 120000);
+    }, 60000);
     return () => clearInterval(interval);
   }, [driveStatus, syncDrive, authToken]);
 
@@ -1012,16 +1012,6 @@ function App() {
       fontWeight: "bold"
     }
   }, "+ Nuevo"),
-    /*#__PURE__*/React.createElement("button", {
-      onClick: toggleTheme,
-      title: darkMode ? "Modo claro" : "Modo oscuro",
-      style: {
-        background: "none", border: "1px solid " + TH.border,
-        color: TH.text3, width: 36, height: 36, borderRadius: 6,
-        cursor: "pointer", fontSize: 16, display: "flex",
-        alignItems: "center", justifyContent: "center", flexShrink: 0
-      }
-    }, darkMode ? "☀️" : "🌙"),
     !isLoggedIn ? /*#__PURE__*/React.createElement("button", {
       onClick: login,
       disabled: authLoading,
