@@ -735,7 +735,7 @@ function App() {
   useEffect(() => {
     const interval = setInterval(() => {
       if (driveStatus === "ok" && authToken) syncDrive();
-    }, 60000);
+    }, 120000);
     return () => clearInterval(interval);
   }, [driveStatus, syncDrive, authToken]);
 
