@@ -718,10 +718,10 @@ function App() {
     try {
       const r = await fetchSheetData(authToken);
       const mc = [...new Set([...(r.clients || []), ...INITIAL_CLIENTS])].filter(Boolean).sort();
-      const mk = [...new Set([...(r.codes || []), ...INITIAL_CODES])].map(c => String(c).trim());
+      // NOTE: r.codes from Sheet tabs 2025/2026 may contain legacy codes from other systems.
+      // Only INITIAL_CODES (the known real codes) + session-created codes are used for numbering.
       startTransition(() => {
         setClients(mc);
-        setAllCodes(mk);
         setDriveStatus("ok");
       });
       flash("✓ Drive · " + mc.length + " clientes");
