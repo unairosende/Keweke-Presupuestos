@@ -6,7 +6,7 @@
   <title>Keweke · Presupuestos</title>
   <script type="module">
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js';
-    import { getAuth, signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js';
+    import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js';
     import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot, query, orderBy, serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js';
     import { getStorage, ref, uploadString, getDownloadURL } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-storage.js';
     const firebaseConfig = {
@@ -21,7 +21,7 @@
     const auth = getAuth(app);
     const db = getFirestore(app);
     const storage = getStorage(app);
-    window._FB = { auth, db, storage, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut,
+    window._FB = { auth, db, storage, GoogleAuthProvider, signInWithPopup, signOut,
       onAuthStateChanged, collection, doc, setDoc, deleteDoc, onSnapshot, query, orderBy,
       serverTimestamp, ref, uploadString, getDownloadURL };
     window._FB_READY = true;
@@ -387,12 +387,14 @@ function waitFB() {
   return new Promise(r => window._FB_READY ? r(window._FB) : window.addEventListener('fb-ready',()=>r(window._FB),{once:true}));
 }
 async function fbSave(proyecto) {
-  const {db, doc, setDoc, serverTimestamp} = await waitFB();
+  const {db, doc, setDoc, serverTimestamp, auth} = await waitFB();
+  if(!auth.currentUser) throw new Error('No autenticado');
   const tots = calcTotals(proyecto);
   await setDoc(doc(db,'presupuestos',proyecto.id), {...proyecto, importe:tots.total, updatedAt:serverTimestamp()});
 }
 async function fbDelete(id) {
-  const {db, doc, deleteDoc} = await waitFB();
+  const {db, doc, deleteDoc, auth} = await waitFB();
+  if(!auth.currentUser) throw new Error('No autenticado');
   await deleteDoc(doc(db,'presupuestos',id));
 }
 async function fbUploadPDF(proyecto, html) {
@@ -1095,9 +1097,7 @@ function App() {
 
   useEffect(()=>{
     if(!fbReady) return;
-    const {auth,onAuthStateChanged,getRedirectResult} = window._FB;
-    // Procesar resultado de redirect si viene de login con Google
-    getRedirectResult(auth).catch(e=>console.warn('Redirect result:',e));
+    const {auth,onAuthStateChanged} = window._FB;
     return onAuthStateChanged(auth,u=>{ setUser(u); if(!u){ setProyectos([]); } });
   },[fbReady]);
 
@@ -1117,9 +1117,10 @@ function App() {
     if(!fbReady) return;
     setAuthBusy(true); setAuthErr('');
     try {
-      const {auth,GoogleAuthProvider,signInWithRedirect}=window._FB;
-      await signInWithRedirect(auth,new GoogleAuthProvider());
-    } catch(e){ setAuthErr(e.message); setAuthBusy(false); }
+      const {auth,GoogleAuthProvider,signInWithPopup}=window._FB;
+      await signInWithPopup(auth,new GoogleAuthProvider());
+    } catch(e){ setAuthErr(e.code==='auth/popup-closed-by-user'?'Ventana cerrada. Inténtalo de nuevo.':e.message); }
+    setAuthBusy(false);
   };
 
   const logout=async()=>{
