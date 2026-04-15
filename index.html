@@ -10,12 +10,13 @@
     import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot, query, orderBy, serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js';
     import { getStorage, ref, uploadString, getDownloadURL } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-storage.js';
     const firebaseConfig = {
-      apiKey: "AIzaSyBSEwCyZGsOZAbyM9yq431Y5BwxXdQmjXo",
-      authDomain: "keweke-presupuestos.firebaseapp.com",
-      projectId: "keweke-presupuestos",
-      storageBucket: "keweke-presupuestos.firebasestorage.app",
-      messagingSenderId: "19814883450",
-      appId: "1:19814883450:web:484ca6df83cb888f435bc3"
+      apiKey: "AIzaSyDWaTaxRbwED5stUqDLy6MH9RG52hVR39M",
+      authDomain: "keweke-presupuestos-583aa.firebaseapp.com",
+      projectId: "keweke-presupuestos-583aa",
+      storageBucket: "keweke-presupuestos-583aa.firebasestorage.app",
+      messagingSenderId: "858756224266",
+      appId: "1:858756224266:web:e9d93cac6b8bc363ab16f3",
+      measurementId: "G-J8EQMT5EK8"
     };
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
@@ -387,14 +388,12 @@ function waitFB() {
   return new Promise(r => window._FB_READY ? r(window._FB) : window.addEventListener('fb-ready',()=>r(window._FB),{once:true}));
 }
 async function fbSave(proyecto) {
-  const {db, doc, setDoc, serverTimestamp, auth} = await waitFB();
-  if(!auth.currentUser) throw new Error('No autenticado');
+  const {db, doc, setDoc, serverTimestamp} = await waitFB();
   const tots = calcTotals(proyecto);
   await setDoc(doc(db,'presupuestos',proyecto.id), {...proyecto, importe:tots.total, updatedAt:serverTimestamp()});
 }
 async function fbDelete(id) {
-  const {db, doc, deleteDoc, auth} = await waitFB();
-  if(!auth.currentUser) throw new Error('No autenticado');
+  const {db, doc, deleteDoc} = await waitFB();
   await deleteDoc(doc(db,'presupuestos',id));
 }
 async function fbUploadPDF(proyecto, html) {
