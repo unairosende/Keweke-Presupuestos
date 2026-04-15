@@ -6,23 +6,22 @@
   <title>Keweke · Presupuestos</title>
   <script type="module">
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js';
-    import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js';
+    import { getAuth, signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js';
     import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot, query, orderBy, serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js';
     import { getStorage, ref, uploadString, getDownloadURL } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-storage.js';
     const firebaseConfig = {
-      apiKey: "AIzaSyDWaTaxRbwED5stUqDLy6MH9RG52hVR39M",
-      authDomain: "keweke-presupuestos-583aa.firebaseapp.com",
-      projectId: "keweke-presupuestos-583aa",
-      storageBucket: "keweke-presupuestos-583aa.firebasestorage.app",
-      messagingSenderId: "858756224266",
-      appId: "1:858756224266:web:e9d93cac6b8bc363ab16f3",
-      measurementId: "G-J8EQMT5EK8"
+      apiKey: "AIzaSyBSEwCyZGsOZAbyM9yq431Y5BwxXdQmjXo",
+      authDomain: "keweke-presupuestos.firebaseapp.com",
+      projectId: "keweke-presupuestos",
+      storageBucket: "keweke-presupuestos.firebasestorage.app",
+      messagingSenderId: "19814883450",
+      appId: "1:19814883450:web:484ca6df83cb888f435bc3"
     };
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
     const storage = getStorage(app);
-    window._FB = { auth, db, storage, GoogleAuthProvider, signInWithPopup, signOut,
+    window._FB = { auth, db, storage, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut,
       onAuthStateChanged, collection, doc, setDoc, deleteDoc, onSnapshot, query, orderBy,
       serverTimestamp, ref, uploadString, getDownloadURL };
     window._FB_READY = true;
@@ -1096,7 +1095,9 @@ function App() {
 
   useEffect(()=>{
     if(!fbReady) return;
-    const {auth,onAuthStateChanged} = window._FB;
+    const {auth,onAuthStateChanged,getRedirectResult} = window._FB;
+    // Procesar resultado de redirect si viene de login con Google
+    getRedirectResult(auth).catch(e=>console.warn('Redirect result:',e));
     return onAuthStateChanged(auth,u=>{ setUser(u); if(!u){ setProyectos([]); } });
   },[fbReady]);
 
@@ -1116,10 +1117,9 @@ function App() {
     if(!fbReady) return;
     setAuthBusy(true); setAuthErr('');
     try {
-      const {auth,GoogleAuthProvider,signInWithPopup}=window._FB;
-      await signInWithPopup(auth,new GoogleAuthProvider());
-    } catch(e){ setAuthErr(e.code==='auth/popup-closed-by-user'?'Ventana cerrada. Inténtalo de nuevo.':e.message); }
-    setAuthBusy(false);
+      const {auth,GoogleAuthProvider,signInWithRedirect}=window._FB;
+      await signInWithRedirect(auth,new GoogleAuthProvider());
+    } catch(e){ setAuthErr(e.message); setAuthBusy(false); }
   };
 
   const logout=async()=>{
