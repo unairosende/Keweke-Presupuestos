@@ -438,24 +438,60 @@ async function geminiGenerate(texto, tipo) {
   const tarifasStr = pl.secciones.map(s =>
     s.nombre+':\n'+s.keys.map(k => {
       let p=0; for(const [,its] of Object.entries(TARIFAS)){ const f=its.find(i=>i.concepto===k); if(f){p=f.precio;break;} }
-      return `  - ${k}: ${p}€/ud·jornada`;
+      return `  - "${k}": ${p}€`;
     }).join('\n')
   ).join('\n\n');
-  const prompt = `Eres el asistente de presupuestos de Keweke, productora audiovisual barcelonesa.
-Genera un presupuesto JSON basándote en la descripción del usuario.
+
+  const prompt = `Eres el gestor de presupuestos de Keweke, productora audiovisual de Barcelona.
+Analiza la descripción y genera un presupuesto JSON completo.
+
 PLANTILLA: ${pl.label}
-TARIFAS:
+PARTIDAS DISPONIBLES (usa los nombres EXACTOS como claves):
 ${tarifasStr}
-Devuelve SOLO JSON con este formato:
-{"cliente":"...","nombre":"...","localizacion":"...","descripcion":"...","fechaProduccion":"...","noIncluye":"...","partidas":{"NombreSeccion":{"ConceptoExacto":{"uds":N,"jornadas":N}}}}
-DESCRIPCIÓN: "${texto}"`;
+
+REGLAS:
+- "uds" = número de unidades/personas (0 si no aplica)
+- "jornadas" = días de trabajo (mínimo 1 si la partida aplica)
+- Si algo NO se menciona explícitamente, deja uds:0
+- Si se menciona "un día", jornadas=1; "dos días", jornadas=2, etc.
+- Para equipo técnico: si se menciona el rol, uds=1 y jornadas=días de rodaje
+- Infiere datos razonables aunque no se digan (ej: si hay rodaje, siempre hay catering)
+- El campo "noIncluye" siempre incluye: "Otros formatos, versiones, idiomas.\nOtros conceptos no descritos"
+
+DESCRIPCIÓN DEL PROYECTO: "${texto}"
+
+Devuelve ÚNICAMENTE un objeto JSON válido con este formato exacto, sin texto adicional, sin bloques de código:
+{
+  "cliente": "nombre del cliente",
+  "nombre": "título del proyecto",
+  "localizacion": "ciudad o lugar",
+  "descripcion": "descripción completa del proyecto en 2-3 frases",
+  "noIncluye": "Otros formatos, versiones, idiomas.\\nOtros conceptos no descritos",
+  "partidas": {
+    "NombreSeccion": {
+      "Concepto exacto": {"uds": N, "jornadas": N}
+    }
+  }
+}`;
+
   const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`,{
     method:'POST', headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})
+    body:JSON.stringify({
+      contents:[{parts:[{text:prompt}]}],
+      generationConfig:{temperature:0.3, responseMimeType:'application/json'}
+    })
   });
   const data = await res.json();
+  if(data.error) throw new Error(data.error.message);
   const raw = data.candidates?.[0]?.content?.parts?.[0]?.text||'{}';
-  return JSON.parse(raw.replace(/```json?\n?/g,'').replace(/```/g,'').trim());
+  try {
+    return JSON.parse(raw.replace(/```json?\n?/g,'').replace(/```/g,'').trim());
+  } catch(e) {
+    // Try to extract JSON from the response
+    const match = raw.match(/\{[\s\S]*\}/);
+    if(match) return JSON.parse(match[0]);
+    throw new Error('Gemini no devolvió JSON válido');
+  }
 }
 function applyGemini(secciones, gd) {
   if(!gd.partidas) return secciones;
@@ -1245,32 +1281,62 @@ function NewModal({onClose, onCreate, onCreateFromVoice, clients, nextCode}) {
       ),
 
       mode==='voice'&&React.createElement('div',{},
-        React.createElement('p',{style:{fontSize:13,color:'var(--text2)',marginBottom:12}},
-          'Describe el proyecto en voz o texto y Gemini creará el presupuesto automáticamente.'),
-        React.createElement('textarea',{
-          value:voiceText,
-          onChange:e=>setVoiceText(e.target.value),
-          placeholder:'Ej: Spot para Freshly Cosmetics, un día de rodaje en Barcelona con realizador, DoP y maquilladora, postproducción con telecine y música de archivo...',
-          rows:4,style:{marginBottom:12,resize:'vertical'}
-        }),
-        React.createElement('div',{style:{display:'flex',gap:10,alignItems:'center'}},
-          React.createElement('button',{
-            onClick:listening?stopVoice:startVoice,
-            style:{background:listening?'var(--red)':'var(--surface2)',
-              color:listening?'white':'var(--text)',padding:'10px 16px',
-              animation:listening?'pulse 1s ease infinite':'',
-              border:'1px solid var(--border2)'}
-          },listening?'⏹ Parar':'🎙 Grabar voz'),
-          React.createElement('div',{style:{flex:1}}),
-          React.createElement('button',{onClick:()=>{ stopVoice(); onClose(); },
-            style:{background:'var(--surface2)',color:'var(--text)',padding:'10px 16px',
-              border:'1px solid var(--border2)'}},'Cancelar'),
-          React.createElement('button',{
-            onClick:runVoiceAI,
-            disabled:voiceLoading||!voiceText.trim(),
-            style:{background:'var(--red)',color:'white',padding:'10px 20px',
-              opacity:!voiceText.trim()?0.45:1}
-          },voiceLoading?'Generando...':'✨ Crear presupuesto')
+        // Estado de carga
+        voiceLoading&&React.createElement('div',{style:{
+          textAlign:'center',padding:'28px 0',
+          display:'flex',flexDirection:'column',alignItems:'center',gap:12}},
+          React.createElement('div',{style:{fontSize:28,animation:'spin 1s linear infinite',display:'inline-block'}},'✨'),
+          React.createElement('div',{style:{fontSize:14,color:'var(--text)',fontWeight:600}},'Generando presupuesto...'),
+          React.createElement('div',{style:{fontSize:12,color:'var(--text3)'}},'Gemini está analizando la descripción')
+        ),
+        !voiceLoading&&React.createElement('div',{},
+          React.createElement('p',{style:{fontSize:13,color:'var(--text2)',marginBottom:10}},
+            'Describe el proyecto — Gemini rellenará las partidas automáticamente.'),
+          // Textarea con indicador de grabación
+          React.createElement('div',{style:{position:'relative',marginBottom:10}},
+            React.createElement('textarea',{
+              value:voiceText,
+              onChange:e=>setVoiceText(e.target.value),
+              placeholder:'Ej: Spot para Freshly Cosmetics, un día de rodaje en Barcelona interior con realizador, DoP, maquilladora y catering. Postproducción con edición, telecine y música de archivo...',
+              rows:5,style:{resize:'vertical',paddingRight:40,
+                border: listening?'1px solid var(--red)':'1px solid var(--border)',
+                transition:'border .2s'}
+            }),
+            listening&&React.createElement('div',{style:{
+              position:'absolute',top:10,right:10,
+              width:10,height:10,borderRadius:'50%',
+              background:'var(--red)',animation:'pulse 1s ease infinite'
+            }})
+          ),
+          // Conteo de caracteres
+          voiceText.length>0&&React.createElement('div',{style:{
+            fontSize:11,color:'var(--text3)',marginBottom:10,textAlign:'right'
+          }},`${voiceText.length} caracteres`),
+          React.createElement('div',{style:{display:'flex',gap:8,alignItems:'center'}},
+            React.createElement('button',{
+              onClick:listening?stopVoice:startVoice,
+              style:{background:listening?'var(--red)':'var(--surface2)',
+                color:listening?'white':'var(--text)',padding:'10px 16px',
+                animation:listening?'pulse 1s ease infinite':'',
+                border:`1px solid ${listening?'var(--red)':'var(--border2)'}`,
+                display:'flex',alignItems:'center',gap:8,fontWeight:600}
+            },
+              listening
+                ? React.createElement('span',{},'⏹ Parar grabación')
+                : React.createElement('span',{},'🎙 Grabar voz')
+            ),
+            React.createElement('div',{style:{flex:1}}),
+            React.createElement('button',{onClick:()=>{ stopVoice(); onClose(); },
+              style:{background:'var(--surface2)',color:'var(--text)',padding:'10px 16px',
+                border:'1px solid var(--border2)'}},'Cancelar'),
+            React.createElement('button',{
+              onClick:runVoiceAI,
+              disabled:!voiceText.trim(),
+              style:{background:'var(--red)',color:'white',padding:'10px 22px',
+                fontWeight:700,fontSize:14,
+                opacity:!voiceText.trim()?0.4:1}
+            },'✨ Crear presupuesto')
+          )
         )
       )
     )
