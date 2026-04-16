@@ -493,15 +493,50 @@ Devuelve ÚNICAMENTE un objeto JSON válido con este formato exacto, sin texto a
     throw new Error('Gemini no devolvió JSON válido');
   }
 }
+function normalizeKey(s) {
+  return String(s).toLowerCase().trim()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'') // remove accents
+    .replace(/[^a-z0-9\s]/g,'').replace(/\s+/g,' ');
+}
+
 function applyGemini(secciones, gd) {
   if(!gd.partidas) return secciones;
-  return secciones.map(sec => ({
-    ...sec,
-    partidas: sec.partidas.map(p => {
-      const match = (gd.partidas[sec.nombre]||{})[p.concepto];
-      return match ? {...p, uds:match.uds||0, jornadas:match.jornadas||1} : p;
-    })
-  }));
+
+  // Build a normalized lookup of what Gemini returned
+  const gdNorm = {};
+  for(const [secKey, partidas] of Object.entries(gd.partidas)) {
+    const normSec = normalizeKey(secKey);
+    gdNorm[normSec] = {};
+    for(const [concKey, vals] of Object.entries(partidas||{})) {
+      gdNorm[normSec][normalizeKey(concKey)] = vals;
+    }
+  }
+
+  console.log('Gemini raw partidas:', JSON.stringify(gd.partidas));
+  console.log('Gemini normalized:', JSON.stringify(gdNorm));
+
+  return secciones.map(sec => {
+    const normSec = normalizeKey(sec.nombre);
+    // Try exact normalized match first, then partial match
+    const secData = gdNorm[normSec] ||
+      Object.entries(gdNorm).find(([k])=>k.includes(normSec)||normSec.includes(k))?.[1] || {};
+
+    return {
+      ...sec,
+      partidas: sec.partidas.map(p => {
+        const normConc = normalizeKey(p.concepto);
+        // Try exact normalized match, then partial match
+        const match = secData[normConc] ||
+          Object.entries(secData).find(([k])=>k.includes(normConc)||normConc.includes(k))?.[1];
+
+        if(match) {
+          console.log(`✓ Match: [${sec.nombre}] "${p.concepto}" → uds:${match.uds} jornadas:${match.jornadas}`);
+          return {...p, uds: Number(match.uds)||0, jornadas: Number(match.jornadas)||1};
+        }
+        return p;
+      })
+    };
+  });
 }
 function buildPDF(p, tots, num) {
   const {
