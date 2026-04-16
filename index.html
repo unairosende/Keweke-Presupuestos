@@ -722,7 +722,11 @@ function Dashboard({proyectos, onSelect, onNew, onDelete, clients}) {
               React.createElement('div',{style:{flex:1,minWidth:0}},
                 React.createElement('div',{style:{fontWeight:600,fontSize:14,
                   whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}},p.nombre||'Sin nombre'),
-                React.createElement('div',{style:{fontSize:12,color:'var(--text2)',marginTop:2}},p.cliente||'—')
+                React.createElement('div',{style:{fontSize:12,color:'var(--text2)',marginTop:1,
+                  whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}},p.cliente||'—'),
+                p.descripcion&&React.createElement('div',{style:{fontSize:11,color:'var(--text3)',marginTop:2,
+                  whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',maxWidth:400}},
+                  p.descripcion.length>80 ? p.descripcion.slice(0,80)+'…' : p.descripcion)
               ),
               React.createElement('div',{style:{fontSize:11,color:pl?.color,
                 background:(pl?.color||'#fff')+'22',padding:'2px 8px',
@@ -904,7 +908,7 @@ function Editor({proyecto, proyectoVersiones, onBack, onSave, onSavePDF, clients
 
       // Info del proyecto (panel superior)
       React.createElement('div',{style:{background:'var(--surface)',borderBottom:'1px solid var(--border)',
-        padding:'10px 20px 12px',flexShrink:0}},
+        padding:'12px 20px 14px',flexShrink:0}},
 
         // Fila 1: código + tipo + estado + versiones
         React.createElement('div',{style:{display:'flex',alignItems:'center',gap:10,marginBottom:10,flexWrap:'wrap'}},
@@ -979,21 +983,21 @@ function Editor({proyecto, proyectoVersiones, onBack, onSave, onSavePDF, clients
           )
         ),
 
-        // Fila descripción + no incluye (compactas)
-        React.createElement('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}},
+        // Fila descripción + no incluye (65/35)
+        React.createElement('div',{style:{display:'grid',gridTemplateColumns:'65fr 35fr',gap:10}},
           React.createElement('div',{},
             React.createElement(Lbl,{t:'Descripción del proyecto'}),
-            React.createElement('textarea',{value:p.descripcion||'',rows:2,
+            React.createElement('textarea',{value:p.descripcion||'',rows:4,
               placeholder:'Descripción detallada del proyecto...',
               onChange:e=>upd({descripcion:e.target.value}),
-              style:{resize:'vertical',minHeight:52}})
+              style:{resize:'vertical',minHeight:80}})
           ),
           React.createElement('div',{},
             React.createElement(Lbl,{t:'No incluye'}),
-            React.createElement('textarea',{value:p.noIncluye||'',rows:2,
+            React.createElement('textarea',{value:p.noIncluye||'',rows:4,
               placeholder:'Otros formatos, versiones, idiomas...',
               onChange:e=>upd({noIncluye:e.target.value}),
-              style:{resize:'vertical',minHeight:52}})
+              style:{resize:'vertical',minHeight:80}})
           )
         )
       ),
