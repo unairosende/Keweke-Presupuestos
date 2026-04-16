@@ -570,12 +570,18 @@ function StatCard({label,value,sub,color}) {
 }
 
 // ── DASHBOARD ─────────────────────────────────────────────────────────────────
-function Dashboard({proyectos, onSelect, onNew, onDelete}) {
+function Dashboard({proyectos, onSelect, onNew, onDelete, onCreateFromVoice}) {
   const [search,setSearch] = useState('');
   const [fEstado,setFEstado] = useState('');
   const [fTipo,setFTipo] = useState('');
   const [fCliente,setFCliente] = useState('');
   const [sortBy,setSortBy] = useState('fecha');
+  const [voiceOpen,setVoiceOpen] = useState(false);
+  const [voiceText,setVoiceText] = useState('');
+  const [voiceTipo,setVoiceTipo] = useState('general');
+  const [voiceLoading,setVoiceLoading] = useState(false);
+  const [listening,setListening] = useState(false);
+  const recRef = useRef(null);
 
   const now = new Date();
   const thisMonth = proyectos.filter(p=>{
@@ -614,6 +620,28 @@ function Dashboard({proyectos, onSelect, onNew, onDelete}) {
     opts.map(o=>React.createElement('option',{key:o.v,value:o.v},o.l))
   );
 
+  const startVoice = ()=>{
+    const SR = window.SpeechRecognition||window.webkitSpeechRecognition;
+    if(!SR){ alert('Usa Chrome para reconocimiento de voz'); return; }
+    const r=new SR(); r.lang='es-ES'; r.continuous=true; r.interimResults=true;
+    r.onresult=e=>setVoiceText(Array.from(e.results).map(r=>r[0].transcript).join(''));
+    r.onend=()=>setListening(false);
+    r.start(); recRef.current=r; setListening(true);
+  };
+  const stopVoice=()=>{ recRef.current?.stop(); setListening(false); };
+
+  const runVoiceAI = async()=>{
+    if(!voiceText.trim()) return;
+    setVoiceLoading(true);
+    try {
+      const result = await geminiGenerate(voiceText, voiceTipo);
+      setVoiceOpen(false);
+      setVoiceText('');
+      await onCreateFromVoice(voiceTipo, result);
+    } catch(e){ alert('Error Gemini: '+e.message); }
+    setVoiceLoading(false);
+  };
+
   return React.createElement('div',{style:{padding:'28px 32px',animation:'fadeIn .3s ease'}},
     // Header
     React.createElement('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:32}},
@@ -623,10 +651,17 @@ function Dashboard({proyectos, onSelect, onNew, onDelete}) {
           React.createElement('span',{style:{color:'var(--text2)',fontWeight:400,fontSize:16,marginLeft:12}}, 'presupuestos')
         )
       ),
-      React.createElement('button',{onClick:onNew,style:{
-        background:'var(--red)',color:'white',padding:'11px 22px',
-        fontSize:14,borderRadius:'var(--r2)'
-      }},'+ Nuevo presupuesto')
+      React.createElement('div',{style:{display:'flex',gap:10}},
+        React.createElement('button',{onClick:()=>setVoiceOpen(true),style:{
+          background:'var(--surface2)',color:'var(--text)',padding:'11px 18px',
+          fontSize:14,borderRadius:'var(--r2)',border:'1px solid var(--border2)',
+          display:'flex',alignItems:'center',gap:8
+        }},'🎙 Dictar presupuesto'),
+        React.createElement('button',{onClick:onNew,style:{
+          background:'var(--red)',color:'white',padding:'11px 22px',
+          fontSize:14,borderRadius:'var(--r2)'
+        }},'+ Nuevo presupuesto')
+      )
     ),
 
     // Stats
@@ -809,13 +844,7 @@ function Editor({proyecto, onBack, onSave, onSavePDF, clients, allCodes, pdfBusy
   };
   const stopVoice=()=>{ recRef.current?.stop(); setListening(false); };
 
-  const LabelInput = ({label,field,type='text',placeholder=''})=>
-    React.createElement('div',{style:{marginBottom:12}},
-      React.createElement('label',{style:{fontSize:11,color:'var(--text2)',fontWeight:700,
-        letterSpacing:'0.4px',textTransform:'uppercase',display:'block',marginBottom:4}},label),
-      React.createElement('input',{type,value:p[field]||'',placeholder,
-        onChange:e=>upd({[field]:type==='number'?parseFloat(e.target.value)||0:e.target.value})})
-    );
+  // LabelInput defined outside render to avoid focus loss
 
   return React.createElement('div',{style:{display:'flex',height:'100vh',overflow:'hidden'}},
 
@@ -848,10 +877,30 @@ function Editor({proyecto, onBack, onSave, onSavePDF, clients, allCodes, pdfBusy
             letterSpacing:'0.4px',textTransform:'uppercase',display:'block',marginBottom:4}},'Cliente'),
           React.createElement(ClienteInput,{value:p.cliente||'',onChange:v=>upd({cliente:v}),clients})
         ),
-        React.createElement(LabelInput,{label:'Proyecto',field:'nombre',placeholder:'Nombre del proyecto'}),
-        React.createElement(LabelInput,{label:'Fecha',field:'fecha',type:'date'}),
-        React.createElement(LabelInput,{label:'Fecha producción',field:'fechaProduccion',placeholder:'26/02/2024'}),
-        React.createElement(LabelInput,{label:'Localización',field:'localizacion',placeholder:'Barcelona'}),
+        React.createElement('div',{style:{marginBottom:12}},
+          React.createElement('label',{style:{fontSize:11,color:'var(--text2)',fontWeight:700,
+            letterSpacing:'0.4px',textTransform:'uppercase',display:'block',marginBottom:4}},'Proyecto'),
+          React.createElement('input',{value:p.nombre||'',placeholder:'Nombre del proyecto',
+            onChange:e=>upd({nombre:e.target.value})})
+        ),
+        React.createElement('div',{style:{marginBottom:12}},
+          React.createElement('label',{style:{fontSize:11,color:'var(--text2)',fontWeight:700,
+            letterSpacing:'0.4px',textTransform:'uppercase',display:'block',marginBottom:4}},'Fecha'),
+          React.createElement('input',{type:'date',value:p.fecha||'',
+            onChange:e=>upd({fecha:e.target.value})})
+        ),
+        React.createElement('div',{style:{marginBottom:12}},
+          React.createElement('label',{style:{fontSize:11,color:'var(--text2)',fontWeight:700,
+            letterSpacing:'0.4px',textTransform:'uppercase',display:'block',marginBottom:4}},'Fecha producción'),
+          React.createElement('input',{value:p.fechaProduccion||'',placeholder:'26/02/2024',
+            onChange:e=>upd({fechaProduccion:e.target.value})})
+        ),
+        React.createElement('div',{style:{marginBottom:12}},
+          React.createElement('label',{style:{fontSize:11,color:'var(--text2)',fontWeight:700,
+            letterSpacing:'0.4px',textTransform:'uppercase',display:'block',marginBottom:4}},'Localización'),
+          React.createElement('input',{value:p.localizacion||'',placeholder:'Barcelona',
+            onChange:e=>upd({localizacion:e.target.value})})
+        ),
         React.createElement('div',{style:{marginBottom:12}},
           React.createElement('label',{style:{fontSize:11,color:'var(--text2)',fontWeight:700,
             letterSpacing:'0.4px',textTransform:'uppercase',display:'block',marginBottom:4}},'Descripción'),
@@ -960,8 +1009,14 @@ function Editor({proyecto, onBack, onSave, onSavePDF, clients, allCodes, pdfBusy
             React.createElement('div',{style:{display:'grid',
               gridTemplateColumns:'1fr 56px 76px 92px 52px 88px',
               gap:4,padding:'6px 18px 4px',
-              fontSize:10,color:'var(--text3)',fontWeight:700,letterSpacing:'0.5px',textTransform:'uppercase'}},
-              'Concepto','Uds','Jornadas','€/ud','Dto%','Total'
+              fontSize:10,color:'var(--text3)',fontWeight:700,letterSpacing:'0.5px',textTransform:'uppercase',
+              borderBottom:'1px solid var(--border)'}},
+              React.createElement('span',{},'Concepto'),
+              React.createElement('span',{style:{textAlign:'center'}},'Uds'),
+              React.createElement('span',{style:{textAlign:'center'}},'Jornadas'),
+              React.createElement('span',{style:{textAlign:'right'}},'€/ud'),
+              React.createElement('span',{style:{textAlign:'center'}},'Dto%'),
+              React.createElement('span',{style:{textAlign:'right'}},'Total')
             ),
             sec.partidas.map((it,pi)=>{
               const lineT=it.uds*it.jornadas*it.precio*(1-(it.dto||0)/100);
@@ -988,6 +1043,55 @@ function Editor({proyecto, onBack, onSave, onSavePDF, clients, allCodes, pdfBusy
             })
           );
         })
+      ),
+
+    // Modal de voz
+    voiceOpen&&React.createElement('div',{
+      style:{position:'fixed',inset:0,background:'rgba(0,0,0,.8)',zIndex:1000,
+        display:'flex',alignItems:'center',justifyContent:'center'},
+      onClick:e=>e.target===e.currentTarget&&setVoiceOpen(false)},
+      React.createElement('div',{style:{background:'var(--surface)',border:'1px solid var(--border2)',
+        borderRadius:16,padding:32,width:520,animation:'fadeIn .2s ease'}},
+        React.createElement('h2',{style:{fontSize:18,fontWeight:700,marginBottom:8}},'🎙 Dictar presupuesto'),
+        React.createElement('p',{style:{fontSize:13,color:'var(--text2)',marginBottom:20}},
+          'Describe el proyecto en voz o texto y Gemini creará el presupuesto automáticamente.'
+        ),
+        // Tipo plantilla
+        React.createElement('div',{style:{display:'flex',gap:8,marginBottom:16}},
+          Object.entries(PLANTILLAS).map(([k,pl])=>React.createElement('button',{key:k,
+            onClick:()=>setVoiceTipo(k),
+            style:{flex:1,padding:'10px 8px',
+              background:voiceTipo===k?pl.color+'22':'var(--surface2)',
+              border:`1px solid ${voiceTipo===k?pl.color:'var(--border)'}`,
+              color:voiceTipo===k?pl.color:'var(--text2)',borderRadius:'var(--r)',
+              fontSize:13,fontWeight:700}
+          },pl.icon+' '+pl.label))
+        ),
+        React.createElement('textarea',{
+          value:voiceText,
+          onChange:e=>setVoiceText(e.target.value),
+          placeholder:'Ej: Spot para Freshly Cosmetics, un día de rodaje en Barcelona con realizador, DoP y maquilladora, postproducción con telecine y música de archivo...',
+          rows:5,style:{marginBottom:12,resize:'vertical'}
+        }),
+        React.createElement('div',{style:{display:'flex',gap:10,alignItems:'center'}},
+          React.createElement('button',{
+            onClick:listening?stopVoice:startVoice,
+            style:{background:listening?'var(--red)':'var(--surface2)',
+              color:listening?'white':'var(--text)',padding:'10px 16px',
+              animation:listening?'pulse 1s ease infinite':'',
+              border:'1px solid var(--border2)'}
+          },listening?'⏹ Parar grabación':'🎙 Grabar voz'),
+          React.createElement('div',{style:{flex:1}}),
+          React.createElement('button',{onClick:()=>{ stopVoice(); setVoiceOpen(false); setVoiceText(''); },
+            style:{background:'var(--surface2)',color:'var(--text)',padding:'10px 16px',
+              border:'1px solid var(--border2)'}},'Cancelar'),
+          React.createElement('button',{
+            onClick:runVoiceAI,
+            disabled:voiceLoading||!voiceText.trim(),
+            style:{background:'var(--red)',color:'white',padding:'10px 20px',
+              opacity:!voiceText.trim()?.45:1}
+          },voiceLoading?'Generando...':'✨ Crear presupuesto')
+        )
       )
     )
   );
@@ -1215,7 +1319,30 @@ function App() {
         ? React.createElement(Dashboard,{proyectos,clients,
             onSelect:p=>{ setCurId(p.id); setView('editor'); },
             onNew:()=>setShowNew(true),
-            onDelete:deletePresupuesto})
+            onDelete:deletePresupuesto,
+            onCreateFromVoice:async(tipo,geminiData)=>{
+              const codigo=suggestCode();
+              const id='p'+Date.now().toString(36)+Math.random().toString(36).slice(2,5);
+              const secciones = applyGemini(buildSecciones(tipo), geminiData);
+              const nuevo={
+                id,codigo,tipo,
+                cliente:geminiData.cliente||'',
+                nombre:geminiData.nombre||'',
+                fecha:new Date().toISOString().slice(0,10),
+                fechaProduccion:geminiData.fechaProduccion||'',
+                localizacion:geminiData.localizacion||'',
+                descripcion:geminiData.descripcion||'',
+                noIncluye:geminiData.noIncluye||'',
+                estado:'borrador',margen:20,iva:0,
+                secciones,pdfUrl:'',savedToDrive:false,
+                createdAt:new Date().toISOString(),
+                updatedAt:new Date().toISOString()
+              };
+              await fbSave(nuevo);
+              setCurId(id); setView('editor');
+              flash('✓ '+codigo+' creado con IA');
+            }
+          })
         : cur
           ? React.createElement(Editor,{proyecto:cur,clients,allCodes,pdfBusy,
               onBack:()=>{ setView('dashboard'); setCurId(null); },
