@@ -398,19 +398,14 @@ async function fbDelete(id) {
   const {db, doc, deleteDoc} = await waitFB();
   await deleteDoc(doc(db,'presupuestos',id));
 }
-async function fbSavePDFhtml(proyecto, html) {
-  const {db, doc, setDoc, serverTimestamp} = await waitFB();
-  // Store HTML in a separate Firestore document to avoid 1MB limit issues
-  await setDoc(doc(db,'presupuestos_pdf', proyecto.id), {
-    html,
-    codigo: proyecto.codigo,
-    updatedAt: serverTimestamp()
-  });
-}
-async function fbGetPDFhtml(id) {
-  const {db, doc, getDoc} = await waitFB();
-  const snap = await getDoc(doc(db,'presupuestos_pdf', id));
-  return snap.exists() ? snap.data().html : null;
+async function fbUploadPDF(proyecto, html) {
+  const {storage, ref, uploadString, getDownloadURL} = await waitFB();
+  const yr = new Date().getFullYear();
+  const safeName = `${proyecto.codigo}_${(proyecto.cliente||'').replace(/[^a-zA-Z0-9]/g,'_')}_${(proyecto.nombre||'').replace(/[^a-zA-Z0-9]/g,'_')}`;
+  const path = `pdfs/${yr}/${safeName}.html`;
+  const r2 = ref(storage, path);
+  await uploadString(r2, html, 'raw', {contentType:'text/html; charset=utf-8'});
+  return getDownloadURL(r2);
 }
 
 function exportPDFlocal(p) {
