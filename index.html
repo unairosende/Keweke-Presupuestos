@@ -812,16 +812,11 @@ function SpinnerInput({value, onChange, min=0}) {
 
 // ── EDITOR ────────────────────────────────────────────────────────────────────
 function Editor({proyecto, proyectoVersiones, onBack, onSave, onSavePDF, clients, allCodes, pdfBusy}) {
-  // versiones: array de proyectos con mismo codigo, ordenados por updatedAt desc
   const versiones = proyectoVersiones || [proyecto];
-  const [verIdx, setVerIdx] = useState(0); // 0 = última versión
+  const [verIdx, setVerIdx] = useState(0);
   const proyectoActivo = versiones[verIdx] || proyecto;
 
   const [p,setP] = useState(proyectoActivo);
-  const [aiText,setAiText] = useState('');
-  const [aiLoading,setAiLoading] = useState(false);
-  const [listening,setListening] = useState(false);
-  const recRef = useRef(null);
   const saveTimer = useRef(null);
 
   useEffect(()=>{ setP(proyectoActivo); },[proyectoActivo?.id, verIdx]);
@@ -845,66 +840,38 @@ function Editor({proyecto, proyectoVersiones, onBack, onSave, onSavePDF, clients
     return {...prev,secciones:secs};
   });
 
-  const runAI = async ()=>{
-    if(!aiText.trim()) return;
-    setAiLoading(true);
-    try {
-      const result = await geminiGenerate(aiText, p.tipo||'general');
-      upd(prev=>{
-        const newSecs = applyGemini(prev.secciones,result);
-        return {
-          ...prev, secciones:newSecs,
-          ...(result.cliente&&!prev.cliente?{cliente:result.cliente}:{}),
-          ...(result.nombre&&!prev.nombre?{nombre:result.nombre}:{}),
-          ...(result.localizacion?{localizacion:result.localizacion}:{}),
-          ...(result.descripcion?{descripcion:result.descripcion}:{}),
-          ...(result.fechaProduccion?{fechaProduccion:result.fechaProduccion}:{}),
-          ...(result.noIncluye?{noIncluye:result.noIncluye}:{})
-        };
-      });
-      setAiText('');
-    } catch(e) { alert('Error Gemini: '+e.message); }
-    setAiLoading(false);
-  };
+  const addPartida = (si)=>upd(prev=>{
+    const secs=[...prev.secciones];
+    const parts=[...secs[si].partidas, {
+      id: Math.random().toString(36).slice(2),
+      concepto:'Nueva partida', uds:0, jornadas:1, precio:0, dto:0
+    }];
+    secs[si]={...secs[si],partidas:parts};
+    return {...prev,secciones:secs};
+  });
 
-  const startVoice = ()=>{
-    const SR = window.SpeechRecognition||window.webkitSpeechRecognition;
-    if(!SR){ alert('Usa Chrome para reconocimiento de voz'); return; }
-    const r=new SR(); r.lang='es-ES'; r.continuous=true; r.interimResults=true;
-    r.onresult=e=>setAiText(Array.from(e.results).map(r=>r[0].transcript).join(''));
-    r.onend=()=>setListening(false);
-    r.start(); recRef.current=r; setListening(true);
-  };
-  const stopVoice=()=>{ recRef.current?.stop(); setListening(false); };
+  const delPartida = (si,pi)=>upd(prev=>{
+    const secs=[...prev.secciones];
+    const parts=secs[si].partidas.filter((_,i)=>i!==pi);
+    secs[si]={...secs[si],partidas:parts};
+    return {...prev,secciones:secs};
+  });
+
+  const updConcepto = (si,pi,val)=>upd(prev=>{
+    const secs=[...prev.secciones];
+    const parts=[...secs[si].partidas];
+    parts[pi]={...parts[pi],concepto:val};
+    secs[si]={...secs[si],partidas:parts};
+    return {...prev,secciones:secs};
+  });
 
   const Lbl = ({t})=>React.createElement('label',{style:{fontSize:11,color:'var(--text2)',fontWeight:700,
     letterSpacing:'0.4px',textTransform:'uppercase',display:'block',marginBottom:4}},t);
 
   return React.createElement('div',{style:{display:'flex',height:'100vh',overflow:'hidden'}},
 
-    // ── MAIN AREA (izquierda/centro) ──
+    // ── MAIN AREA ──
     React.createElement('div',{style:{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',background:'var(--bg)'}},
-
-      // AI Bar (arriba)
-      React.createElement('div',{style:{background:'var(--surface)',borderBottom:'1px solid var(--border)',
-        padding:'8px 20px',display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',flexShrink:0}},
-        React.createElement('span',{style:{fontSize:11,color:'var(--text2)',flexShrink:0,fontWeight:700,
-          letterSpacing:'0.5px',textTransform:'uppercase'}},'✨ Gemini'),
-        React.createElement('input',{value:aiText,onChange:e=>setAiText(e.target.value),
-          placeholder:'Describe el proyecto y Gemini rellena el presupuesto...',
-          style:{flex:1,minWidth:180,fontSize:13,padding:'6px 10px'},
-          onKeyDown:e=>e.key==='Enter'&&!e.shiftKey&&runAI()}),
-        React.createElement('button',{
-          onClick:listening?stopVoice:startVoice,
-          style:{background:listening?'var(--red)':'var(--surface2)',
-            color:listening?'white':'var(--text2)',padding:'6px 10px',fontSize:12,flexShrink:0,
-            animation:listening?'pulse 1s ease infinite':''}
-        },listening?'⏹':'🎙'),
-        React.createElement('button',{onClick:runAI,disabled:aiLoading||!aiText.trim(),style:{
-          background:'var(--red)',color:'white',padding:'6px 14px',fontSize:12,flexShrink:0,
-          opacity:!aiText.trim()?0.45:1
-        }},aiLoading?'…':'Generar')
-      ),
 
       // Info del proyecto (panel superior)
       React.createElement('div',{style:{background:'var(--surface)',borderBottom:'1px solid var(--border)',
@@ -1008,17 +975,18 @@ function Editor({proyecto, proyectoVersiones, onBack, onSave, onSavePDF, clients
           const secTotal=sec.partidas.reduce((s,it)=>s+it.uds*it.jornadas*it.precio*(1-(it.dto||0)/100),0);
           return React.createElement('div',{key:sec.nombre,style:{marginBottom:16,
             background:'var(--surface)',border:'1px solid var(--border)',borderRadius:'var(--r2)',overflow:'hidden'}},
+            // Header sección
             React.createElement('div',{style:{display:'flex',justifyContent:'space-between',
               alignItems:'center',padding:'9px 16px',background:'var(--surface2)',
               borderBottom:'1px solid var(--border)'}},
-              React.createElement('span',{style:{fontWeight:700,fontSize:13,letterSpacing:'0.5px',
-                textTransform:'uppercase',color:'var(--red)',fontSize:11}},sec.nombre),
+              React.createElement('span',{style:{fontWeight:700,fontSize:11,letterSpacing:'0.5px',
+                textTransform:'uppercase',color:'var(--red)'}},sec.nombre),
               React.createElement('span',{style:{fontFamily:"'DM Mono',monospace",fontSize:12,
                 color:'var(--text2)'}},fEUR(secTotal))
             ),
             // Header columnas
             React.createElement('div',{style:{display:'grid',
-              gridTemplateColumns:'1fr 66px 80px 100px 54px 90px',
+              gridTemplateColumns:'1fr 66px 80px 100px 54px 90px 28px',
               gap:4,padding:'5px 16px 4px',
               fontSize:10,color:'var(--text3)',fontWeight:700,letterSpacing:'0.5px',textTransform:'uppercase',
               borderBottom:'1px solid var(--border)'}},
@@ -1027,17 +995,28 @@ function Editor({proyecto, proyectoVersiones, onBack, onSave, onSavePDF, clients
               React.createElement('span',{style:{textAlign:'center'}},'JORNADAS'),
               React.createElement('span',{style:{textAlign:'right'}},'€ / UD'),
               React.createElement('span',{style:{textAlign:'center'}},'Dto%'),
-              React.createElement('span',{style:{textAlign:'right'}},'Total')
+              React.createElement('span',{style:{textAlign:'right'}},'Total'),
+              React.createElement('span',{})
             ),
+            // Filas partidas
             sec.partidas.map((it,pi)=>{
               const lineT=it.uds*it.jornadas*it.precio*(1-(it.dto||0)/100);
               const active=it.uds>0;
               return React.createElement('div',{key:it.id||pi,style:{
-                display:'grid',gridTemplateColumns:'1fr 66px 80px 100px 54px 90px',
+                display:'grid',gridTemplateColumns:'1fr 66px 80px 100px 54px 90px 28px',
                 gap:4,padding:'4px 16px',alignItems:'center',
                 borderTop:'1px solid var(--border)',
-                opacity:active?1:0.45,transition:'opacity .15s'}},
-                React.createElement('span',{style:{fontSize:13,fontWeight:active?500:400}},it.concepto),
+                opacity:active?1:0.5,transition:'opacity .15s'}},
+                // Concepto editable
+                React.createElement('input',{
+                  type:'text', value:it.concepto,
+                  onChange:e=>updConcepto(si,pi,e.target.value),
+                  style:{background:'transparent',border:'none',borderBottom:'1px solid transparent',
+                    color:'var(--text)',fontSize:13,fontWeight:active?500:400,padding:'2px 0',
+                    outline:'none',width:'100%'},
+                  onFocus:e=>e.target.style.borderBottomColor='var(--border2)',
+                  onBlur:e=>e.target.style.borderBottomColor='transparent'
+                }),
                 React.createElement(SpinnerInput,{value:it.uds,onChange:v=>updPartida(si,pi,'uds',v),min:0}),
                 React.createElement(SpinnerInput,{value:it.jornadas,onChange:v=>updPartida(si,pi,'jornadas',v),min:1}),
                 React.createElement('input',{type:'number',value:it.precio,className:'nospin',
@@ -1047,9 +1026,33 @@ function Editor({proyecto, proyectoVersiones, onBack, onSave, onSavePDF, clients
                   onChange:e=>updPartida(si,pi,'dto',parseFloat(e.target.value)||0),
                   style:{padding:'4px 6px',fontSize:12,textAlign:'center'}}),
                 React.createElement('span',{style:{fontFamily:"'DM Mono',monospace",fontSize:12,
-                  textAlign:'right',color:active?'var(--text)':'var(--text3)'}},fEUR(lineT))
+                  textAlign:'right',color:active?'var(--text)':'var(--text3)'}},fEUR(lineT)),
+                // Botón eliminar
+                React.createElement('button',{
+                  onClick:()=>delPartida(si,pi),
+                  title:'Eliminar partida',
+                  style:{background:'transparent',color:'var(--text3)',padding:'2px',fontSize:14,
+                    lineHeight:1,border:'none',borderRadius:4,cursor:'pointer',textAlign:'center'},
+                  onMouseEnter:e=>e.target.style.color='#ef4444',
+                  onMouseLeave:e=>e.target.style.color='var(--text3)'
+                },'✕')
               );
-            })
+            }),
+            // Botón añadir partida
+            React.createElement('div',{style:{padding:'6px 16px',borderTop:'1px solid var(--border)',
+              background:'var(--surface)'}},
+              React.createElement('button',{
+                onClick:()=>addPartida(si),
+                style:{background:'transparent',color:'var(--text3)',fontSize:12,
+                  padding:'4px 0',border:'none',cursor:'pointer',display:'flex',
+                  alignItems:'center',gap:6,fontWeight:500},
+                onMouseEnter:e=>e.currentTarget.style.color='var(--text)',
+                onMouseLeave:e=>e.currentTarget.style.color='var(--text3)'
+              },
+                React.createElement('span',{style:{fontSize:16,lineHeight:1,color:'var(--red)',fontWeight:700}},'+'),
+                'Añadir partida'
+              )
+            )
           );
         })
       )
