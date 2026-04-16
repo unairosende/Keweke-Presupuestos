@@ -788,6 +788,10 @@ function Editor({proyecto, onBack, onSave, onSavePDF, clients, allCodes, pdfBusy
   const [aiText,setAiText] = useState('');
   const [aiLoading,setAiLoading] = useState(false);
   const [listening,setListening] = useState(false);
+  const [voiceOpen,setVoiceOpen] = useState(false);
+  const [voiceText,setVoiceText] = useState('');
+  const [voiceTipo,setVoiceTipo] = useState('general');
+  const [voiceLoading,setVoiceLoading] = useState(false);
   const recRef = useRef(null);
   const saveTimer = useRef(null);
 
@@ -832,6 +836,29 @@ function Editor({proyecto, onBack, onSave, onSavePDF, clients, allCodes, pdfBusy
       setAiText('');
     } catch(e) { alert('Error Gemini: '+e.message); }
     setAiLoading(false);
+  };
+
+  const runVoiceAI = async()=>{
+    if(!voiceText.trim()) return;
+    setVoiceLoading(true);
+    try {
+      const result = await geminiGenerate(voiceText, voiceTipo);
+      upd(prev=>{
+        const newSecs = applyGemini(buildSecciones(voiceTipo), result);
+        return {
+          ...prev, tipo:voiceTipo, secciones:newSecs,
+          ...(result.cliente?{cliente:result.cliente}:{}),
+          ...(result.nombre?{nombre:result.nombre}:{}),
+          ...(result.localizacion?{localizacion:result.localizacion}:{}),
+          ...(result.descripcion?{descripcion:result.descripcion}:{}),
+          ...(result.fechaProduccion?{fechaProduccion:result.fechaProduccion}:{}),
+          ...(result.noIncluye?{noIncluye:result.noIncluye}:{})
+        };
+      });
+      setVoiceOpen(false);
+      setVoiceText('');
+    } catch(e) { alert('Error Gemini: '+e.message); }
+    setVoiceLoading(false);
   };
 
   const startVoice = ()=>{
