@@ -570,18 +570,12 @@ function StatCard({label,value,sub,color}) {
 }
 
 // ── DASHBOARD ─────────────────────────────────────────────────────────────────
-function Dashboard({proyectos, onSelect, onNew, onDelete, onCreateFromVoice}) {
+function Dashboard({proyectos, onSelect, onNew, onDelete, clients}) {
   const [search,setSearch] = useState('');
   const [fEstado,setFEstado] = useState('');
   const [fTipo,setFTipo] = useState('');
   const [fCliente,setFCliente] = useState('');
   const [sortBy,setSortBy] = useState('fecha');
-  const [voiceOpen,setVoiceOpen] = useState(false);
-  const [voiceText,setVoiceText] = useState('');
-  const [voiceTipo,setVoiceTipo] = useState('general');
-  const [voiceLoading,setVoiceLoading] = useState(false);
-  const [listening,setListening] = useState(false);
-  const recRef = useRef(null);
 
   const now = new Date();
   const thisMonth = proyectos.filter(p=>{
@@ -620,28 +614,6 @@ function Dashboard({proyectos, onSelect, onNew, onDelete, onCreateFromVoice}) {
     opts.map(o=>React.createElement('option',{key:o.v,value:o.v},o.l))
   );
 
-  const startVoice = ()=>{
-    const SR = window.SpeechRecognition||window.webkitSpeechRecognition;
-    if(!SR){ alert('Usa Chrome para reconocimiento de voz'); return; }
-    const r=new SR(); r.lang='es-ES'; r.continuous=true; r.interimResults=true;
-    r.onresult=e=>setVoiceText(Array.from(e.results).map(r=>r[0].transcript).join(''));
-    r.onend=()=>setListening(false);
-    r.start(); recRef.current=r; setListening(true);
-  };
-  const stopVoice=()=>{ recRef.current?.stop(); setListening(false); };
-
-  const runVoiceAI = async()=>{
-    if(!voiceText.trim()) return;
-    setVoiceLoading(true);
-    try {
-      const result = await geminiGenerate(voiceText, voiceTipo);
-      setVoiceOpen(false);
-      setVoiceText('');
-      await onCreateFromVoice(voiceTipo, result);
-    } catch(e){ alert('Error Gemini: '+e.message); }
-    setVoiceLoading(false);
-  };
-
   return React.createElement('div',{style:{padding:'28px 32px',animation:'fadeIn .3s ease'}},
     // Header
     React.createElement('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:32}},
@@ -652,11 +624,6 @@ function Dashboard({proyectos, onSelect, onNew, onDelete, onCreateFromVoice}) {
         )
       ),
       React.createElement('div',{style:{display:'flex',gap:10}},
-        React.createElement('button',{onClick:()=>setVoiceOpen(true),style:{
-          background:'var(--surface2)',color:'var(--text)',padding:'11px 18px',
-          fontSize:14,borderRadius:'var(--r2)',border:'1px solid var(--border2)',
-          display:'flex',alignItems:'center',gap:8
-        }},'🎙 Dictar presupuesto'),
         React.createElement('button',{onClick:onNew,style:{
           background:'var(--red)',color:'white',padding:'11px 22px',
           fontSize:14,borderRadius:'var(--r2)'
@@ -782,20 +749,78 @@ function Dashboard({proyectos, onSelect, onNew, onDelete, onCreateFromVoice}) {
   );
 }
 
+// ── SPINNER INPUT (Uds / Jornadas) ────────────────────────────────────────────
+function SpinnerInput({value, onChange, min=0}) {
+  const [editing, setEditing] = useState(false);
+  const [raw, setRaw] = useState(String(value));
+
+  useEffect(()=>{ if(!editing) setRaw(String(value)); },[value, editing]);
+
+  const commit = (v) => {
+    const n = parseInt(v, 10);
+    const safe = isNaN(n) ? min : Math.max(min, n);
+    onChange(safe);
+    setRaw(String(safe));
+    setEditing(false);
+  };
+
+  const step = (delta) => {
+    const n = Math.max(min, value + delta);
+    onChange(n);
+    setRaw(String(n));
+  };
+
+  return React.createElement('div',{style:{display:'flex',flexDirection:'column',alignItems:'center',gap:1}},
+    React.createElement('button',{
+      onMouseDown:e=>{ e.preventDefault(); step(1); },
+      style:{background:'transparent',color:'var(--text3)',padding:'1px 6px',fontSize:9,lineHeight:1,
+        border:'none',borderRadius:'3px 3px 0 0',cursor:'pointer',width:'100%',
+        transition:'all .1s'},
+      onMouseEnter:e=>{ e.target.style.color='var(--text)'; e.target.style.background='var(--surface3)'; },
+      onMouseLeave:e=>{ e.target.style.color='var(--text3)'; e.target.style.background='transparent'; }
+    },'▲'),
+    React.createElement('input',{
+      type:'text',
+      value:editing ? raw : String(value),
+      className:'nospin',
+      onFocus:()=>{ setEditing(true); setRaw(value===0?'':String(value)); },
+      onChange:e=>setRaw(e.target.value),
+      onBlur:()=>commit(raw),
+      onKeyDown:e=>{
+        if(e.key==='Enter') { e.target.blur(); }
+        else if(e.key==='ArrowUp') { e.preventDefault(); step(1); }
+        else if(e.key==='ArrowDown') { e.preventDefault(); step(-1); }
+      },
+      style:{padding:'3px 4px',fontSize:12,textAlign:'center',width:'100%',
+        background:'var(--surface2)',border:'1px solid var(--border)',borderRadius:0,
+        color: value===0?'var(--text3)':'var(--text)'}
+    }),
+    React.createElement('button',{
+      onMouseDown:e=>{ e.preventDefault(); step(-1); },
+      style:{background:'transparent',color:'var(--text3)',padding:'1px 6px',fontSize:9,lineHeight:1,
+        border:'none',borderRadius:'0 0 3px 3px',cursor:'pointer',width:'100%',
+        transition:'all .1s'},
+      onMouseEnter:e=>{ e.target.style.color='var(--text)'; e.target.style.background='var(--surface3)'; },
+      onMouseLeave:e=>{ e.target.style.color='var(--text3)'; e.target.style.background='transparent'; }
+    },'▼')
+  );
+}
+
 // ── EDITOR ────────────────────────────────────────────────────────────────────
-function Editor({proyecto, onBack, onSave, onSavePDF, clients, allCodes, pdfBusy}) {
-  const [p,setP] = useState(proyecto);
+function Editor({proyecto, proyectoVersiones, onBack, onSave, onSavePDF, clients, allCodes, pdfBusy}) {
+  // versiones: array de proyectos con mismo codigo, ordenados por updatedAt desc
+  const versiones = proyectoVersiones || [proyecto];
+  const [verIdx, setVerIdx] = useState(0); // 0 = última versión
+  const proyectoActivo = versiones[verIdx] || proyecto;
+
+  const [p,setP] = useState(proyectoActivo);
   const [aiText,setAiText] = useState('');
   const [aiLoading,setAiLoading] = useState(false);
   const [listening,setListening] = useState(false);
-  const [voiceOpen,setVoiceOpen] = useState(false);
-  const [voiceText,setVoiceText] = useState('');
-  const [voiceTipo,setVoiceTipo] = useState('general');
-  const [voiceLoading,setVoiceLoading] = useState(false);
   const recRef = useRef(null);
   const saveTimer = useRef(null);
 
-  useEffect(()=>{ setP(proyecto); },[proyecto?.id]);
+  useEffect(()=>{ setP(proyectoActivo); },[proyectoActivo?.id, verIdx]);
 
   const upd = useCallback(cb=>{
     setP(prev=>{
@@ -838,29 +863,6 @@ function Editor({proyecto, onBack, onSave, onSavePDF, clients, allCodes, pdfBusy
     setAiLoading(false);
   };
 
-  const runVoiceAI = async()=>{
-    if(!voiceText.trim()) return;
-    setVoiceLoading(true);
-    try {
-      const result = await geminiGenerate(voiceText, voiceTipo);
-      upd(prev=>{
-        const newSecs = applyGemini(buildSecciones(voiceTipo), result);
-        return {
-          ...prev, tipo:voiceTipo, secciones:newSecs,
-          ...(result.cliente?{cliente:result.cliente}:{}),
-          ...(result.nombre?{nombre:result.nombre}:{}),
-          ...(result.localizacion?{localizacion:result.localizacion}:{}),
-          ...(result.descripcion?{descripcion:result.descripcion}:{}),
-          ...(result.fechaProduccion?{fechaProduccion:result.fechaProduccion}:{}),
-          ...(result.noIncluye?{noIncluye:result.noIncluye}:{})
-        };
-      });
-      setVoiceOpen(false);
-      setVoiceText('');
-    } catch(e) { alert('Error Gemini: '+e.message); }
-    setVoiceLoading(false);
-  };
-
   const startVoice = ()=>{
     const SR = window.SpeechRecognition||window.webkitSpeechRecognition;
     if(!SR){ alert('Usa Chrome para reconocimiento de voz'); return; }
@@ -871,116 +873,226 @@ function Editor({proyecto, onBack, onSave, onSavePDF, clients, allCodes, pdfBusy
   };
   const stopVoice=()=>{ recRef.current?.stop(); setListening(false); };
 
-  // LabelInput defined outside render to avoid focus loss
+  const Lbl = ({t})=>React.createElement('label',{style:{fontSize:11,color:'var(--text2)',fontWeight:700,
+    letterSpacing:'0.4px',textTransform:'uppercase',display:'block',marginBottom:4}},t);
 
   return React.createElement('div',{style:{display:'flex',height:'100vh',overflow:'hidden'}},
 
-    // Sidebar
-    React.createElement('div',{style:{width:272,background:'var(--surface)',
-      borderRight:'1px solid var(--border)',display:'flex',flexDirection:'column',flexShrink:0}},
-      // Top
-      React.createElement('div',{style:{padding:'14px 16px',borderBottom:'1px solid var(--border)'}},
-        React.createElement('button',{onClick:onBack,style:{background:'transparent',
-          color:'var(--text2)',padding:'4px 0',fontSize:12,marginBottom:10}}, '← Volver'),
-        React.createElement('div',{style:{fontFamily:"'DM Mono',monospace",fontSize:13,
-          color:'var(--red)',fontWeight:600}},p.codigo),
-        React.createElement('div',{style:{fontSize:12,color:'var(--text3)',marginTop:2}},
-          PLANTILLAS[p.tipo||'general']?.label+' · '+PLANTILLAS[p.tipo||'general']?.descripcion)
+    // ── MAIN AREA (izquierda/centro) ──
+    React.createElement('div',{style:{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',background:'var(--bg)'}},
+
+      // AI Bar (arriba)
+      React.createElement('div',{style:{background:'var(--surface)',borderBottom:'1px solid var(--border)',
+        padding:'8px 20px',display:'flex',gap:8,alignItems:'center',flexWrap:'wrap',flexShrink:0}},
+        React.createElement('span',{style:{fontSize:11,color:'var(--text2)',flexShrink:0,fontWeight:700,
+          letterSpacing:'0.5px',textTransform:'uppercase'}},'✨ Gemini'),
+        React.createElement('input',{value:aiText,onChange:e=>setAiText(e.target.value),
+          placeholder:'Describe el proyecto y Gemini rellena el presupuesto...',
+          style:{flex:1,minWidth:180,fontSize:13,padding:'6px 10px'},
+          onKeyDown:e=>e.key==='Enter'&&!e.shiftKey&&runAI()}),
+        React.createElement('button',{
+          onClick:listening?stopVoice:startVoice,
+          style:{background:listening?'var(--red)':'var(--surface2)',
+            color:listening?'white':'var(--text2)',padding:'6px 10px',fontSize:12,flexShrink:0,
+            animation:listening?'pulse 1s ease infinite':''}
+        },listening?'⏹':'🎙'),
+        React.createElement('button',{onClick:runAI,disabled:aiLoading||!aiText.trim(),style:{
+          background:'var(--red)',color:'white',padding:'6px 14px',fontSize:12,flexShrink:0,
+          opacity:!aiText.trim()?0.45:1
+        }},aiLoading?'…':'Generar')
       ),
 
-      // Form
-      React.createElement('div',{style:{flex:1,overflowY:'auto',padding:'14px 16px'}},
-        React.createElement('div',{style:{marginBottom:12}},
-          React.createElement('label',{style:{fontSize:11,color:'var(--text2)',fontWeight:700,
-            letterSpacing:'0.4px',textTransform:'uppercase',display:'block',marginBottom:4}},'Estado'),
+      // Info del proyecto (panel superior)
+      React.createElement('div',{style:{background:'var(--surface)',borderBottom:'1px solid var(--border)',
+        padding:'16px 20px',flexShrink:0}},
+
+        // Fila 1: código + tipo + estado + versiones
+        React.createElement('div',{style:{display:'flex',alignItems:'center',gap:12,marginBottom:14,flexWrap:'wrap'}},
+          React.createElement('button',{onClick:onBack,style:{background:'transparent',
+            color:'var(--text3)',padding:'4px 0',fontSize:12,flexShrink:0}},'← Volver'),
+          React.createElement('div',{style:{fontFamily:"'DM Mono',monospace",fontSize:14,
+            color:'var(--red)',fontWeight:700,background:'var(--red)'+'18',
+            padding:'3px 10px',borderRadius:6}},p.codigo),
+          React.createElement('div',{style:{fontSize:12,color:PLANTILLAS[p.tipo||'general']?.color,
+            background:(PLANTILLAS[p.tipo||'general']?.color||'#fff')+'22',
+            padding:'3px 10px',borderRadius:6,fontWeight:700}},
+            PLANTILLAS[p.tipo||'general']?.icon+' '+PLANTILLAS[p.tipo||'general']?.label),
           React.createElement('select',{value:p.estado||'borrador',
             onChange:e=>upd({estado:e.target.value}),
-            style:{borderLeft:`3px solid ${ESTADO_COLORS[p.estado||'borrador']}`}},
+            style:{borderLeft:`3px solid ${ESTADO_COLORS[p.estado||'borrador']}`,
+              width:'auto',fontSize:12,padding:'4px 8px'}},
             Object.entries(ESTADO_LABELS).map(([v,l])=>React.createElement('option',{key:v,value:v},l))
+          ),
+          // Navegador de versiones
+          versiones.length>1&&React.createElement('div',{style:{display:'flex',alignItems:'center',gap:6,
+            marginLeft:'auto',background:'var(--surface2)',borderRadius:8,padding:'3px 8px',
+            border:'1px solid var(--border)'}},
+            React.createElement('button',{
+              onClick:()=>setVerIdx(Math.min(versiones.length-1, verIdx+1)),
+              disabled:verIdx>=versiones.length-1,
+              style:{background:'transparent',color:verIdx>=versiones.length-1?'var(--text3)':'var(--text)',
+                padding:'2px 6px',fontSize:12}
+            },'‹'),
+            React.createElement('span',{style:{fontSize:11,color:'var(--text2)',whiteSpace:'nowrap'}},
+              `v${versiones.length-verIdx} / ${versiones.length}`,
+              verIdx===0?' (última)':''
+            ),
+            React.createElement('button',{
+              onClick:()=>setVerIdx(Math.max(0, verIdx-1)),
+              disabled:verIdx<=0,
+              style:{background:'transparent',color:verIdx<=0?'var(--text3)':'var(--text)',
+                padding:'2px 6px',fontSize:12}
+            },'›')
           )
         ),
-        React.createElement('div',{style:{marginBottom:12}},
-          React.createElement('label',{style:{fontSize:11,color:'var(--text2)',fontWeight:700,
-            letterSpacing:'0.4px',textTransform:'uppercase',display:'block',marginBottom:4}},'Cliente'),
-          React.createElement(ClienteInput,{value:p.cliente||'',onChange:v=>upd({cliente:v}),clients})
-        ),
-        React.createElement('div',{style:{marginBottom:12}},
-          React.createElement('label',{style:{fontSize:11,color:'var(--text2)',fontWeight:700,
-            letterSpacing:'0.4px',textTransform:'uppercase',display:'block',marginBottom:4}},'Proyecto'),
-          React.createElement('input',{value:p.nombre||'',placeholder:'Nombre del proyecto',
-            onChange:e=>upd({nombre:e.target.value})})
-        ),
-        React.createElement('div',{style:{marginBottom:12}},
-          React.createElement('label',{style:{fontSize:11,color:'var(--text2)',fontWeight:700,
-            letterSpacing:'0.4px',textTransform:'uppercase',display:'block',marginBottom:4}},'Fecha'),
-          React.createElement('input',{type:'date',value:p.fecha||'',
-            onChange:e=>upd({fecha:e.target.value})})
-        ),
-        React.createElement('div',{style:{marginBottom:12}},
-          React.createElement('label',{style:{fontSize:11,color:'var(--text2)',fontWeight:700,
-            letterSpacing:'0.4px',textTransform:'uppercase',display:'block',marginBottom:4}},'Fecha producción'),
-          React.createElement('input',{value:p.fechaProduccion||'',placeholder:'26/02/2024',
-            onChange:e=>upd({fechaProduccion:e.target.value})})
-        ),
-        React.createElement('div',{style:{marginBottom:12}},
-          React.createElement('label',{style:{fontSize:11,color:'var(--text2)',fontWeight:700,
-            letterSpacing:'0.4px',textTransform:'uppercase',display:'block',marginBottom:4}},'Localización'),
-          React.createElement('input',{value:p.localizacion||'',placeholder:'Barcelona',
-            onChange:e=>upd({localizacion:e.target.value})})
-        ),
-        React.createElement('div',{style:{marginBottom:12}},
-          React.createElement('label',{style:{fontSize:11,color:'var(--text2)',fontWeight:700,
-            letterSpacing:'0.4px',textTransform:'uppercase',display:'block',marginBottom:4}},'Descripción'),
-          React.createElement('textarea',{value:p.descripcion||'',rows:4,
-            placeholder:'Descripción del proyecto...',
-            onChange:e=>upd({descripcion:e.target.value}),style:{resize:'vertical'}})
-        ),
-        React.createElement('div',{style:{marginBottom:12}},
-          React.createElement('label',{style:{fontSize:11,color:'var(--text2)',fontWeight:700,
-            letterSpacing:'0.4px',textTransform:'uppercase',display:'block',marginBottom:4}},'No incluye'),
-          React.createElement('textarea',{value:p.noIncluye||'',rows:2,
-            placeholder:'Otros formatos, versiones...',
-            onChange:e=>upd({noIncluye:e.target.value}),style:{resize:'vertical'}})
-        ),
-        React.createElement('div',{style:{display:'flex',gap:8}},
-          React.createElement('div',{style:{flex:1}},
-            React.createElement('label',{style:{fontSize:11,color:'var(--text2)',fontWeight:700,
-              letterSpacing:'0.4px',textTransform:'uppercase',display:'block',marginBottom:4}},'Margen %'),
-            React.createElement('input',{type:'number',value:p.margen||0,className:'nospin',
-              onChange:e=>upd({margen:parseFloat(e.target.value)||0})})
+
+        // Fila 2: campos principales
+        React.createElement('div',{style:{display:'grid',gridTemplateColumns:'2fr 2fr 1fr 1fr',gap:12,marginBottom:12}},
+          React.createElement('div',{},
+            React.createElement(Lbl,{t:'Cliente / Agencia'}),
+            React.createElement(ClienteInput,{value:p.cliente||'',onChange:v=>upd({cliente:v}),clients})
           ),
-          React.createElement('div',{style:{flex:1}},
-            React.createElement('label',{style:{fontSize:11,color:'var(--text2)',fontWeight:700,
-              letterSpacing:'0.4px',textTransform:'uppercase',display:'block',marginBottom:4}},'IVA %'),
-            React.createElement('input',{type:'number',value:p.iva||0,className:'nospin',
-              onChange:e=>upd({iva:parseFloat(e.target.value)||0})})
+          React.createElement('div',{},
+            React.createElement(Lbl,{t:'Proyecto'}),
+            React.createElement('input',{value:p.nombre||'',placeholder:'Nombre del proyecto',
+              onChange:e=>upd({nombre:e.target.value})})
+          ),
+          React.createElement('div',{},
+            React.createElement(Lbl,{t:'Fecha presupuesto'}),
+            React.createElement('input',{type:'date',value:p.fecha||'',
+              onChange:e=>upd({fecha:e.target.value})})
+          ),
+          React.createElement('div',{},
+            React.createElement(Lbl,{t:'Fecha producción'}),
+            React.createElement('input',{value:p.fechaProduccion||'',placeholder:'dd/mm/aaaa',
+              onChange:e=>upd({fechaProduccion:e.target.value})})
+          )
+        ),
+
+        // Fila 3: descripción + no incluye + localización
+        React.createElement('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12}},
+          React.createElement('div',{},
+            React.createElement(Lbl,{t:'Descripción del proyecto'}),
+            React.createElement('textarea',{value:p.descripcion||'',rows:3,
+              placeholder:'Descripción detallada del proyecto...',
+              onChange:e=>upd({descripcion:e.target.value}),style:{resize:'vertical'}})
+          ),
+          React.createElement('div',{},
+            React.createElement(Lbl,{t:'No incluye'}),
+            React.createElement('textarea',{value:p.noIncluye||'',rows:3,
+              placeholder:'Otros formatos, versiones...',
+              onChange:e=>upd({noIncluye:e.target.value}),style:{resize:'vertical'}})
+          ),
+          React.createElement('div',{},
+            React.createElement(Lbl,{t:'Localización'}),
+            React.createElement('input',{value:p.localizacion||'',placeholder:'Barcelona, exterior...',
+              onChange:e=>upd({localizacion:e.target.value}),style:{marginBottom:8}})
+          )
+        )
+      ),
+
+      // Partidas (zona scrollable)
+      React.createElement('div',{style:{flex:1,overflowY:'auto',padding:'16px 20px'}},
+        (p.secciones||[]).map((sec,si)=>{
+          const secTotal=sec.partidas.reduce((s,it)=>s+it.uds*it.jornadas*it.precio*(1-(it.dto||0)/100),0);
+          return React.createElement('div',{key:sec.nombre,style:{marginBottom:16,
+            background:'var(--surface)',border:'1px solid var(--border)',borderRadius:'var(--r2)',overflow:'hidden'}},
+            React.createElement('div',{style:{display:'flex',justifyContent:'space-between',
+              alignItems:'center',padding:'9px 16px',background:'var(--surface2)',
+              borderBottom:'1px solid var(--border)'}},
+              React.createElement('span',{style:{fontWeight:700,fontSize:13,letterSpacing:'0.5px',
+                textTransform:'uppercase',color:'var(--red)',fontSize:11}},sec.nombre),
+              React.createElement('span',{style:{fontFamily:"'DM Mono',monospace",fontSize:12,
+                color:'var(--text2)'}},fEUR(secTotal))
+            ),
+            // Header columnas
+            React.createElement('div',{style:{display:'grid',
+              gridTemplateColumns:'1fr 66px 80px 100px 54px 90px',
+              gap:4,padding:'5px 16px 4px',
+              fontSize:10,color:'var(--text3)',fontWeight:700,letterSpacing:'0.5px',textTransform:'uppercase',
+              borderBottom:'1px solid var(--border)'}},
+              React.createElement('span',{},'Concepto'),
+              React.createElement('span',{style:{textAlign:'center'}},'UDS'),
+              React.createElement('span',{style:{textAlign:'center'}},'JORNADAS'),
+              React.createElement('span',{style:{textAlign:'right'}},'€ / UD'),
+              React.createElement('span',{style:{textAlign:'center'}},'Dto%'),
+              React.createElement('span',{style:{textAlign:'right'}},'Total')
+            ),
+            sec.partidas.map((it,pi)=>{
+              const lineT=it.uds*it.jornadas*it.precio*(1-(it.dto||0)/100);
+              const active=it.uds>0;
+              return React.createElement('div',{key:it.id||pi,style:{
+                display:'grid',gridTemplateColumns:'1fr 66px 80px 100px 54px 90px',
+                gap:4,padding:'4px 16px',alignItems:'center',
+                borderTop:'1px solid var(--border)',
+                opacity:active?1:0.45,transition:'opacity .15s'}},
+                React.createElement('span',{style:{fontSize:13,fontWeight:active?500:400}},it.concepto),
+                React.createElement(SpinnerInput,{value:it.uds,onChange:v=>updPartida(si,pi,'uds',v),min:0}),
+                React.createElement(SpinnerInput,{value:it.jornadas,onChange:v=>updPartida(si,pi,'jornadas',v),min:1}),
+                React.createElement('input',{type:'number',value:it.precio,className:'nospin',
+                  onChange:e=>updPartida(si,pi,'precio',parseFloat(e.target.value)||0),
+                  style:{padding:'4px 6px',fontSize:12,textAlign:'right'}}),
+                React.createElement('input',{type:'number',value:it.dto||0,className:'nospin',
+                  onChange:e=>updPartida(si,pi,'dto',parseFloat(e.target.value)||0),
+                  style:{padding:'4px 6px',fontSize:12,textAlign:'center'}}),
+                React.createElement('span',{style:{fontFamily:"'DM Mono',monospace",fontSize:12,
+                  textAlign:'right',color:active?'var(--text)':'var(--text3)'}},fEUR(lineT))
+              );
+            })
+          );
+        })
+      )
+    ),
+
+    // ── SIDEBAR DERECHO (resumen + acciones) ──
+    React.createElement('div',{style:{width:260,background:'var(--surface)',
+      borderLeft:'1px solid var(--border)',display:'flex',flexDirection:'column',flexShrink:0}},
+
+      // Parámetros económicos
+      React.createElement('div',{style:{padding:'16px',borderBottom:'1px solid var(--border)'}},
+        React.createElement('div',{style:{marginBottom:12}},
+          React.createElement(Lbl,{t:'Margen de producción (%)'}),
+          React.createElement('input',{type:'number',value:p.margen||0,className:'nospin',
+            onChange:e=>upd({margen:parseFloat(e.target.value)||0})})
+        ),
+        React.createElement('div',{},
+          React.createElement(Lbl,{t:'IVA'}),
+          React.createElement('select',{value:p.iva||0,
+            onChange:e=>upd({iva:parseFloat(e.target.value)||0})},
+            React.createElement('option',{value:0},'0%'),
+            React.createElement('option',{value:10},'10%'),
+            React.createElement('option',{value:21},'21%')
           )
         )
       ),
 
       // Totales
-      React.createElement('div',{style:{borderTop:'1px solid var(--border)',padding:'14px 16px',background:'var(--bg)'}},
-        [['Subtotal',tots.sub,'var(--text2)'],
-         p.margen>0?['Con margen ('+p.margen+'%)',tots.conMargen,'var(--text)']:null,
-         p.iva>0?['IVA ('+p.iva+'%)',tots.iva,'var(--text2)']:null,
-         ['TOTAL',tots.total,'var(--red)']
+      React.createElement('div',{style:{padding:'16px',flex:1}},
+        [
+          ['Subtotal', tots.sub, 'var(--text2)', false],
+          ['Margen ('+p.margen+'%)', tots.conMargen - tots.sub, 'var(--text2)', false],
+          ['Base imponible', tots.conMargen, 'var(--text)', false],
+          p.iva>0?['IVA ('+p.iva+'%)', tots.iva, 'var(--text2)', false]:null,
         ].filter(Boolean).map(([l,v,c])=>React.createElement('div',{key:l,style:{
-          display:'flex',justifyContent:'space-between',padding:'4px 0',
-          fontSize:l==='TOTAL'?16:13,fontWeight:l==='TOTAL'?700:400,
-          borderTop:l==='TOTAL'?'1px solid var(--border)':'none',
-          marginTop:l==='TOTAL'?8:0,paddingTop:l==='TOTAL'?8:4
-        }},
+          display:'flex',justifyContent:'space-between',padding:'5px 0',
+          borderBottom:'1px solid var(--border)',fontSize:12}},
           React.createElement('span',{style:{color:'var(--text2)'}},l),
           React.createElement('span',{style:{color:c,fontFamily:"'DM Mono',monospace"}},fEUR(v))
-        ))
+        )),
+        React.createElement('div',{style:{display:'flex',justifyContent:'space-between',
+          paddingTop:14,marginTop:4,fontSize:16,fontWeight:700}},
+          React.createElement('span',{style:{color:'var(--text2)',textTransform:'uppercase',fontSize:12,
+            alignSelf:'center'}}, 'TOTAL'),
+          React.createElement('span',{style:{color:'var(--red)',fontFamily:"'DM Mono',monospace"}},fEUR(tots.total))
+        )
       ),
 
       // Acciones
-      React.createElement('div',{style:{padding:'12px 16px',borderTop:'1px solid var(--border)',
+      React.createElement('div',{style:{padding:'14px 16px',borderTop:'1px solid var(--border)',
         display:'flex',flexDirection:'column',gap:8}},
         React.createElement('button',{onClick:()=>onSavePDF(p),disabled:pdfBusy,style:{
           background:'var(--red)',color:'white',padding:'10px',fontSize:13,width:'100%'
-        }},pdfBusy?'↑ Subiendo...':'↑ Guardar PDF en Drive'),
+        }},pdfBusy?'↑ Subiendo...':'🖨 Exportar PDF'),
         React.createElement('button',{onClick:()=>{
           const html=buildPDF(p,calcTotals(p),p.codigo);
           const b=new Blob([html],{type:'text/html'});
@@ -995,152 +1107,57 @@ function Editor({proyecto, onBack, onSave, onSavePDF, clients, allCodes, pdfBusy
           display:'block',textAlign:'center',fontSize:12,color:'var(--blue)',padding:'6px'
         }},'Ver PDF en Drive')
       )
-    ),
-
-    // Main
-    React.createElement('div',{style:{flex:1,overflowY:'auto',background:'var(--bg)'}},
-      // AI Bar
-      React.createElement('div',{style:{background:'var(--surface)',borderBottom:'1px solid var(--border)',
-        padding:'10px 24px',display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}},
-        React.createElement('span',{style:{fontSize:12,color:'var(--text2)',flexShrink:0,fontWeight:600}},
-          '✨ Gemini'),
-        React.createElement('input',{value:aiText,onChange:e=>setAiText(e.target.value),
-          placeholder:'Describe el proyecto y Gemini rellena el presupuesto automáticamente...',
-          style:{flex:1,minWidth:200,fontSize:13,padding:'7px 12px'},
-          onKeyDown:e=>e.key==='Enter'&&!e.shiftKey&&runAI()}),
-        React.createElement('button',{
-          onClick:listening?stopVoice:startVoice,
-          style:{background:listening?'var(--red)':'var(--surface2)',
-            color:listening?'white':'var(--text2)',padding:'7px 12px',fontSize:13,flexShrink:0,
-            animation:listening?'pulse 1s ease infinite':''}
-        },listening?'⏹ Parar':'🎙 Voz'),
-        React.createElement('button',{onClick:runAI,disabled:aiLoading||!aiText.trim(),style:{
-          background:'var(--red)',color:'white',padding:'7px 16px',fontSize:13,flexShrink:0,
-          opacity:!aiText.trim()?0.45:1
-        }},aiLoading?'Generando...':'Generar')
-      ),
-
-      // Secciones
-      React.createElement('div',{style:{padding:'20px 28px'}},
-        (p.secciones||[]).map((sec,si)=>{
-          const secTotal=sec.partidas.reduce((s,it)=>s+it.uds*it.jornadas*it.precio*(1-(it.dto||0)/100),0);
-          return React.createElement('div',{key:sec.nombre,style:{marginBottom:20,
-            background:'var(--surface)',border:'1px solid var(--border)',borderRadius:'var(--r2)',overflow:'hidden'}},
-            React.createElement('div',{style:{display:'flex',justifyContent:'space-between',
-              alignItems:'center',padding:'10px 18px',background:'var(--surface2)',
-              borderBottom:'1px solid var(--border)'}},
-              React.createElement('span',{style:{fontWeight:700,fontSize:14}},sec.nombre),
-              React.createElement('span',{style:{fontFamily:"'DM Mono',monospace",fontSize:12,
-                color:'var(--text2)'}},fEUR(secTotal))
-            ),
-            React.createElement('div',{style:{display:'grid',
-              gridTemplateColumns:'1fr 56px 76px 92px 52px 88px',
-              gap:4,padding:'6px 18px 4px',
-              fontSize:10,color:'var(--text3)',fontWeight:700,letterSpacing:'0.5px',textTransform:'uppercase',
-              borderBottom:'1px solid var(--border)'}},
-              React.createElement('span',{},'Concepto'),
-              React.createElement('span',{style:{textAlign:'center'}},'Uds'),
-              React.createElement('span',{style:{textAlign:'center'}},'Jornadas'),
-              React.createElement('span',{style:{textAlign:'right'}},'€/ud'),
-              React.createElement('span',{style:{textAlign:'center'}},'Dto%'),
-              React.createElement('span',{style:{textAlign:'right'}},'Total')
-            ),
-            sec.partidas.map((it,pi)=>{
-              const lineT=it.uds*it.jornadas*it.precio*(1-(it.dto||0)/100);
-              const active=it.uds>0;
-              return React.createElement('div',{key:it.id||pi,style:{
-                display:'grid',gridTemplateColumns:'1fr 56px 76px 92px 52px 88px',
-                gap:4,padding:'5px 18px',alignItems:'center',
-                borderTop:'1px solid var(--border)',
-                opacity:active?1:0.4,transition:'opacity .15s'}},
-                React.createElement('span',{style:{fontSize:13,fontWeight:active?500:400}},it.concepto),
-                ...[['uds',56],['jornadas',76]].map(([f])=>React.createElement('input',{
-                  key:f,type:'number',value:it[f],className:'nospin',
-                  onChange:e=>updPartida(si,pi,f,parseFloat(e.target.value)||0),
-                  style:{padding:'4px 6px',fontSize:12,textAlign:'center'}})),
-                React.createElement('input',{type:'number',value:it.precio,className:'nospin',
-                  onChange:e=>updPartida(si,pi,'precio',parseFloat(e.target.value)||0),
-                  style:{padding:'4px 6px',fontSize:12,textAlign:'right'}}),
-                React.createElement('input',{type:'number',value:it.dto||0,className:'nospin',
-                  onChange:e=>updPartida(si,pi,'dto',parseFloat(e.target.value)||0),
-                  style:{padding:'4px 6px',fontSize:12,textAlign:'center'}}),
-                React.createElement('span',{style:{fontFamily:"'DM Mono',monospace",fontSize:12,
-                  textAlign:'right',color:active?'var(--text)':'var(--text3)'}},fEUR(lineT))
-              );
-            })
-          );
-        })
-      )),
-
-    // Modal de voz
-    voiceOpen&&React.createElement('div',{
-      style:{position:'fixed',inset:0,background:'rgba(0,0,0,.8)',zIndex:1000,
-        display:'flex',alignItems:'center',justifyContent:'center'},
-      onClick:e=>e.target===e.currentTarget&&setVoiceOpen(false)},
-      React.createElement('div',{style:{background:'var(--surface)',border:'1px solid var(--border2)',
-        borderRadius:16,padding:32,width:520,animation:'fadeIn .2s ease'}},
-        React.createElement('h2',{style:{fontSize:18,fontWeight:700,marginBottom:8}},'🎙 Dictar presupuesto'),
-        React.createElement('p',{style:{fontSize:13,color:'var(--text2)',marginBottom:20}},
-          'Describe el proyecto en voz o texto y Gemini creará el presupuesto automáticamente.'
-        ),
-        // Tipo plantilla
-        React.createElement('div',{style:{display:'flex',gap:8,marginBottom:16}},
-          Object.entries(PLANTILLAS).map(([k,pl])=>React.createElement('button',{key:k,
-            onClick:()=>setVoiceTipo(k),
-            style:{flex:1,padding:'10px 8px',
-              background:voiceTipo===k?pl.color+'22':'var(--surface2)',
-              border:`1px solid ${voiceTipo===k?pl.color:'var(--border)'}`,
-              color:voiceTipo===k?pl.color:'var(--text2)',borderRadius:'var(--r)',
-              fontSize:13,fontWeight:700}
-          },pl.icon+' '+pl.label))
-        ),
-        React.createElement('textarea',{
-          value:voiceText,
-          onChange:e=>setVoiceText(e.target.value),
-          placeholder:'Ej: Spot para Freshly Cosmetics, un día de rodaje en Barcelona con realizador, DoP y maquilladora, postproducción con telecine y música de archivo...',
-          rows:5,style:{marginBottom:12,resize:'vertical'}
-        }),
-        React.createElement('div',{style:{display:'flex',gap:10,alignItems:'center'}},
-          React.createElement('button',{
-            onClick:listening?stopVoice:startVoice,
-            style:{background:listening?'var(--red)':'var(--surface2)',
-              color:listening?'white':'var(--text)',padding:'10px 16px',
-              animation:listening?'pulse 1s ease infinite':'',
-              border:'1px solid var(--border2)'}
-          },listening?'⏹ Parar grabación':'🎙 Grabar voz'),
-          React.createElement('div',{style:{flex:1}}),
-          React.createElement('button',{onClick:()=>{ stopVoice(); setVoiceOpen(false); setVoiceText(''); },
-            style:{background:'var(--surface2)',color:'var(--text)',padding:'10px 16px',
-              border:'1px solid var(--border2)'}},'Cancelar'),
-          React.createElement('button',{
-            onClick:runVoiceAI,
-            disabled:voiceLoading||!voiceText.trim(),
-            style:{background:'var(--red)',color:'white',padding:'10px 20px',
-              opacity:!voiceText.trim()?.45:1}
-          },voiceLoading?'Generando...':'✨ Crear presupuesto')
-        )
-      )
     )
   );
 }
 
 // ── NEW MODAL ─────────────────────────────────────────────────────────────────
-function NewModal({onClose, onCreate, clients, nextCode}) {
+function NewModal({onClose, onCreate, onCreateFromVoice, clients, nextCode}) {
   const [tipo,setTipo] = useState('general');
   const [cliente,setCliente] = useState('');
   const [nombre,setNombre] = useState('');
+  const [mode, setMode] = useState('manual'); // 'manual' | 'voice'
+  const [voiceText, setVoiceText] = useState('');
+  const [voiceLoading, setVoiceLoading] = useState(false);
+  const [listening, setListening] = useState(false);
+  const recRef = useRef(null);
   const code = nextCode();
+
+  const startVoice = ()=>{
+    const SR = window.SpeechRecognition||window.webkitSpeechRecognition;
+    if(!SR){ alert('Usa Chrome para reconocimiento de voz'); return; }
+    const r=new SR(); r.lang='es-ES'; r.continuous=true; r.interimResults=true;
+    r.onresult=e=>setVoiceText(Array.from(e.results).map(r=>r[0].transcript).join(''));
+    r.onend=()=>setListening(false);
+    r.start(); recRef.current=r; setListening(true);
+  };
+  const stopVoice=()=>{ recRef.current?.stop(); setListening(false); };
+
+  const runVoiceAI = async()=>{
+    if(!voiceText.trim()) return;
+    setVoiceLoading(true);
+    try {
+      const result = await geminiGenerate(voiceText, tipo);
+      stopVoice();
+      onClose();
+      await onCreateFromVoice(tipo, result);
+    } catch(e){ alert('Error Gemini: '+e.message); }
+    setVoiceLoading(false);
+  };
+
   return React.createElement('div',{
     style:{position:'fixed',inset:0,background:'rgba(0,0,0,.75)',zIndex:1000,
       display:'flex',alignItems:'center',justifyContent:'center'},
     onClick:e=>e.target===e.currentTarget&&onClose()},
     React.createElement('div',{style:{background:'var(--surface)',border:'1px solid var(--border2)',
-      borderRadius:16,padding:32,width:480,animation:'fadeIn .2s ease'}},
-      React.createElement('h2',{style:{fontSize:18,fontWeight:700,marginBottom:24}},
+      borderRadius:16,padding:32,width:500,animation:'fadeIn .2s ease'}},
+      React.createElement('h2',{style:{fontSize:18,fontWeight:700,marginBottom:20}},
         'Nuevo  ',
         React.createElement('span',{style:{fontFamily:"'DM Mono',monospace",fontSize:14,
           color:'var(--red)',fontWeight:400}},code)
       ),
+
+      // Selector de plantilla
       React.createElement('div',{style:{marginBottom:20}},
         React.createElement('div',{style:{fontSize:11,fontWeight:700,letterSpacing:'0.5px',
           textTransform:'uppercase',color:'var(--text2)',marginBottom:10}},'Plantilla'),
@@ -1155,26 +1172,74 @@ function NewModal({onClose, onCreate, clients, nextCode}) {
           },pl.icon+' '+pl.label))
         )
       ),
-      React.createElement('div',{style:{marginBottom:14}},
-        React.createElement('label',{style:{fontSize:11,color:'var(--text2)',fontWeight:700,
-          letterSpacing:'0.4px',textTransform:'uppercase',display:'block',marginBottom:6}},'Cliente'),
-        React.createElement(ClienteInput,{value:cliente,onChange:setCliente,clients})
+
+      // Tabs manual / voz
+      React.createElement('div',{style:{display:'flex',gap:4,marginBottom:20,
+        background:'var(--surface2)',borderRadius:'var(--r)',padding:4}},
+        React.createElement('button',{onClick:()=>setMode('manual'),style:{
+          flex:1,padding:'8px',fontSize:13,fontWeight:600,borderRadius:6,
+          background:mode==='manual'?'var(--surface3)':'transparent',
+          color:mode==='manual'?'var(--text)':'var(--text3)',border:'none'}
+        },'✍ Manual'),
+        React.createElement('button',{onClick:()=>setMode('voice'),style:{
+          flex:1,padding:'8px',fontSize:13,fontWeight:600,borderRadius:6,
+          background:mode==='voice'?'var(--surface3)':'transparent',
+          color:mode==='voice'?'var(--text)':'var(--text3)',border:'none'}
+        },'🎙 Dictar con IA')
       ),
-      React.createElement('div',{style:{marginBottom:28}},
-        React.createElement('label',{style:{fontSize:11,color:'var(--text2)',fontWeight:700,
-          letterSpacing:'0.4px',textTransform:'uppercase',display:'block',marginBottom:6}},'Proyecto'),
-        React.createElement('input',{value:nombre,onChange:e=>setNombre(e.target.value),
-          placeholder:'Nombre del proyecto...',
-          onKeyDown:e=>e.key==='Enter'&&cliente&&nombre&&onCreate(tipo,cliente,nombre)})
+
+      mode==='manual'&&React.createElement('div',{},
+        React.createElement('div',{style:{marginBottom:14}},
+          React.createElement('label',{style:{fontSize:11,color:'var(--text2)',fontWeight:700,
+            letterSpacing:'0.4px',textTransform:'uppercase',display:'block',marginBottom:6}},'Cliente'),
+          React.createElement(ClienteInput,{value:cliente,onChange:setCliente,clients})
+        ),
+        React.createElement('div',{style:{marginBottom:24}},
+          React.createElement('label',{style:{fontSize:11,color:'var(--text2)',fontWeight:700,
+            letterSpacing:'0.4px',textTransform:'uppercase',display:'block',marginBottom:6}},'Proyecto'),
+          React.createElement('input',{value:nombre,onChange:e=>setNombre(e.target.value),
+            placeholder:'Nombre del proyecto...',
+            onKeyDown:e=>e.key==='Enter'&&cliente&&nombre&&onCreate(tipo,cliente,nombre)})
+        ),
+        React.createElement('div',{style:{display:'flex',gap:10,justifyContent:'flex-end'}},
+          React.createElement('button',{onClick:onClose,style:{background:'var(--surface2)',
+            color:'var(--text)',padding:'10px 20px'}},'Cancelar'),
+          React.createElement('button',{onClick:()=>onCreate(tipo,cliente,nombre),
+            disabled:!cliente||!nombre,
+            style:{background:'var(--red)',color:'white',padding:'10px 20px',
+              opacity:!cliente||!nombre?0.45:1}},
+            'Crear · '+code)
+        )
       ),
-      React.createElement('div',{style:{display:'flex',gap:10,justifyContent:'flex-end'}},
-        React.createElement('button',{onClick:onClose,style:{background:'var(--surface2)',
-          color:'var(--text)',padding:'10px 20px'}},'Cancelar'),
-        React.createElement('button',{onClick:()=>onCreate(tipo,cliente,nombre),
-          disabled:!cliente||!nombre,
-          style:{background:'var(--red)',color:'white',padding:'10px 20px',
-            opacity:!cliente||!nombre?.45:1}},
-          'Crear · '+code)
+
+      mode==='voice'&&React.createElement('div',{},
+        React.createElement('p',{style:{fontSize:13,color:'var(--text2)',marginBottom:12}},
+          'Describe el proyecto en voz o texto y Gemini creará el presupuesto automáticamente.'),
+        React.createElement('textarea',{
+          value:voiceText,
+          onChange:e=>setVoiceText(e.target.value),
+          placeholder:'Ej: Spot para Freshly Cosmetics, un día de rodaje en Barcelona con realizador, DoP y maquilladora, postproducción con telecine y música de archivo...',
+          rows:4,style:{marginBottom:12,resize:'vertical'}
+        }),
+        React.createElement('div',{style:{display:'flex',gap:10,alignItems:'center'}},
+          React.createElement('button',{
+            onClick:listening?stopVoice:startVoice,
+            style:{background:listening?'var(--red)':'var(--surface2)',
+              color:listening?'white':'var(--text)',padding:'10px 16px',
+              animation:listening?'pulse 1s ease infinite':'',
+              border:'1px solid var(--border2)'}
+          },listening?'⏹ Parar':'🎙 Grabar voz'),
+          React.createElement('div',{style:{flex:1}}),
+          React.createElement('button',{onClick:()=>{ stopVoice(); onClose(); },
+            style:{background:'var(--surface2)',color:'var(--text)',padding:'10px 16px',
+              border:'1px solid var(--border2)'}},'Cancelar'),
+          React.createElement('button',{
+            onClick:runVoiceAI,
+            disabled:voiceLoading||!voiceText.trim(),
+            style:{background:'var(--red)',color:'white',padding:'10px 20px',
+              opacity:!voiceText.trim()?0.45:1}
+          },voiceLoading?'Generando...':'✨ Crear presupuesto')
+        )
       )
     )
   );
@@ -1346,32 +1411,13 @@ function App() {
         ? React.createElement(Dashboard,{proyectos,clients,
             onSelect:p=>{ setCurId(p.id); setView('editor'); },
             onNew:()=>setShowNew(true),
-            onDelete:deletePresupuesto,
-            onCreateFromVoice:async(tipo,geminiData)=>{
-              const codigo=suggestCode();
-              const id='p'+Date.now().toString(36)+Math.random().toString(36).slice(2,5);
-              const secciones = applyGemini(buildSecciones(tipo), geminiData);
-              const nuevo={
-                id,codigo,tipo,
-                cliente:geminiData.cliente||'',
-                nombre:geminiData.nombre||'',
-                fecha:new Date().toISOString().slice(0,10),
-                fechaProduccion:geminiData.fechaProduccion||'',
-                localizacion:geminiData.localizacion||'',
-                descripcion:geminiData.descripcion||'',
-                noIncluye:geminiData.noIncluye||'',
-                estado:'borrador',margen:20,iva:0,
-                secciones,pdfUrl:'',savedToDrive:false,
-                createdAt:new Date().toISOString(),
-                updatedAt:new Date().toISOString()
-              };
-              await fbSave(nuevo);
-              setCurId(id); setView('editor');
-              flash('✓ '+codigo+' creado con IA');
-            }
+            onDelete:deletePresupuesto
           })
         : cur
-          ? React.createElement(Editor,{proyecto:cur,clients,allCodes,pdfBusy,
+          ? React.createElement(Editor,{proyecto:cur,
+              proyectoVersiones: proyectos.filter(p=>p.codigo===cur.codigo)
+                .sort((a,b)=>(b.updatedAt?.seconds||0)-(a.updatedAt?.seconds||0)),
+              clients,allCodes,pdfBusy,
               onBack:()=>{ setView('dashboard'); setCurId(null); },
               onSave:savePresupuesto,
               onSavePDF:savePDF})
@@ -1380,7 +1426,30 @@ function App() {
     ),
 
     showNew&&React.createElement(NewModal,{onClose:()=>setShowNew(false),
-      onCreate:createPresupuesto,clients,nextCode:suggestCode}),
+      onCreate:createPresupuesto,
+      onCreateFromVoice:async(tipo,geminiData)=>{
+        const codigo=suggestCode();
+        const id='p'+Date.now().toString(36)+Math.random().toString(36).slice(2,5);
+        const secciones = applyGemini(buildSecciones(tipo), geminiData);
+        const nuevo={
+          id,codigo,tipo,
+          cliente:geminiData.cliente||'',
+          nombre:geminiData.nombre||'',
+          fecha:new Date().toISOString().slice(0,10),
+          fechaProduccion:geminiData.fechaProduccion||'',
+          localizacion:geminiData.localizacion||'',
+          descripcion:geminiData.descripcion||'',
+          noIncluye:geminiData.noIncluye||'',
+          estado:'borrador',margen:20,iva:0,
+          secciones,pdfUrl:'',savedToDrive:false,
+          createdAt:new Date().toISOString(),
+          updatedAt:new Date().toISOString()
+        };
+        await fbSave(nuevo);
+        setShowNew(false); setCurId(id); setView('editor');
+        flash('✓ '+codigo+' creado con IA');
+      },
+      clients,nextCode:suggestCode}),
     React.createElement(Toast,{msg:toast?.msg,type:toast?.type})
   );
 }
