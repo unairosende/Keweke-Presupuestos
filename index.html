@@ -9,6 +9,7 @@
     import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js';
     import { getFirestore, collection, doc, setDoc, getDoc, deleteDoc, onSnapshot, query, orderBy, serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js';
     import { getStorage, ref, uploadString, getDownloadURL } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-storage.js';
+    import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-functions.js';
     const firebaseConfig = {
       apiKey: "AIzaSyDWaTaxRbwED5stUqDLy6MH9RG52hVR39M",
       authDomain: "keweke-presupuestos-583aa.firebaseapp.com",
@@ -22,7 +23,8 @@
     const auth = getAuth(app);
     const db = getFirestore(app);
     const storage = getStorage(app);
-    window._FB = { auth, db, storage, GoogleAuthProvider, signInWithPopup, signOut,
+    const functions = getFunctions(app, 'europe-west1');
+    window._FB = { auth, db, storage, functions, httpsCallable, GoogleAuthProvider, signInWithPopup, signOut,
       onAuthStateChanged, collection, doc, setDoc, getDoc, deleteDoc, onSnapshot, query, orderBy,
       serverTimestamp, ref, uploadString, getDownloadURL };
     window._FB_READY = true;
@@ -474,20 +476,13 @@ Devuelve ÚNICAMENTE un objeto JSON válido con este formato exacto, sin texto a
   }
 }`;
 
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`,{
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({
-      contents:[{parts:[{text:prompt}]}],
-      generationConfig:{temperature:0.3, responseMimeType:'application/json'}
-    })
-  });
-  const data = await res.json();
-  if(data.error) throw new Error(data.error.message);
-  const raw = data.candidates?.[0]?.content?.parts?.[0]?.text||'{}';
+  const { functions, httpsCallable } = window._FB;
+  const fn = httpsCallable(functions, 'geminiGenerate');
+  const res = await fn({ prompt });
+  const raw = res.data.result || '{}';
   try {
     return JSON.parse(raw.replace(/```json?\n?/g,'').replace(/```/g,'').trim());
   } catch(e) {
-    // Try to extract JSON from the response
     const match = raw.match(/\{[\s\S]*\}/);
     if(match) return JSON.parse(match[0]);
     throw new Error('Gemini no devolvió JSON válido');
