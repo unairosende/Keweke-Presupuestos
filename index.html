@@ -401,8 +401,19 @@ async function fbUploadPDF(proyecto, html) {
   const yr = new Date().getFullYear();
   const path = `pdfs/${yr}/${proyecto.codigo}_${proyecto.cliente}_${proyecto.nombre}.html`;
   const r2 = ref(storage, path);
-  await uploadString(r2, html, 'raw', {contentType:'text/html'});
+  await uploadString(r2, html, 'raw', {contentType:'text/html; charset=utf-8'});
   return getDownloadURL(r2);
+}
+
+function exportPDFlocal(p) {
+  const tots = calcTotals(p);
+  const html = buildPDF(p, tots, p.codigo);
+  // Open in new window and trigger print dialog (browser saves as PDF)
+  const win = window.open('','_blank');
+  win.document.write(html);
+  win.document.close();
+  win.focus();
+  setTimeout(()=>{ win.print(); }, 600);
 }
 
 // ── GEMINI AI ─────────────────────────────────────────────────────────────────
@@ -464,7 +475,7 @@ function buildPDF(p, tots, num) {
   const hdr1 = `<table width="100%" style="margin-bottom:22px"><tr><td><img src="${LOGO}" style="height:38px;width:auto"/></td></tr></table>`;
   const hdr2 = `<div style="height:38px;margin-bottom:22px"></div>`;
   const footer = `<div style="margin-top:24px;padding-top:12px;border-top:1px solid #ccc;text-align:center;font-size:7pt;color:#888">C/ Muntaner 479, ático 4º · 08021 Barcelona · CIF B65430381 · www.keweke.com</div>`;
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>@page{size:A4;margin:18mm 22mm}*{box-sizing:border-box;font-family:'DM Sans',sans-serif}body{color:#1a1a1a;font-size:9pt}table{border-collapse:collapse}.page{page-break-after:always}.page:last-child{page-break-after:avoid}</style></head><body>
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>@page{size:A4;margin:18mm 22mm}*{box-sizing:border-box;font-family:'DM Sans',sans-serif}body{color:#1a1a1a;font-size:9pt}table{border-collapse:collapse}.page{page-break-after:always}.page:last-child{page-break-after:avoid}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style></head><body>
 <div class="page">${hdr1}
 <table width="100%" style="border:1px solid #ccc;margin-bottom:10px">
 <tr><td colspan="2" style="padding:5px 8px;font-weight:bold;font-size:8.5pt;border-bottom:1px solid #ccc">PRESUPUESTO</td></tr>
@@ -918,7 +929,7 @@ function Editor({proyecto, proyectoVersiones, onBack, onSave, onSavePDF, clients
         ),
 
         // Fila única: todos los campos en una sola línea de grid
-        React.createElement('div',{style:{display:'grid',gridTemplateColumns:'1.4fr 1.4fr 0.9fr 0.9fr 1fr 1fr',gap:10,marginBottom:10}},
+        React.createElement('div',{style:{display:'grid',gridTemplateColumns:'1.6fr 1.6fr 1fr 1.2fr 0.8fr',gap:10,marginBottom:10}},
           React.createElement('div',{},
             React.createElement(Lbl,{t:'Cliente / Agencia'}),
             React.createElement(ClienteInput,{value:p.cliente||'',onChange:v=>upd({cliente:v}),clients})
@@ -929,21 +940,16 @@ function Editor({proyecto, proyectoVersiones, onBack, onSave, onSavePDF, clients
               onChange:e=>upd({nombre:e.target.value})})
           ),
           React.createElement('div',{},
-            React.createElement(Lbl,{t:'Fecha presu.'}),
+            React.createElement(Lbl,{t:'Fecha presupuesto'}),
             React.createElement('input',{type:'date',value:p.fecha||'',
               onChange:e=>upd({fecha:e.target.value})})
-          ),
-          React.createElement('div',{},
-            React.createElement(Lbl,{t:'Fecha prod.'}),
-            React.createElement('input',{value:p.fechaProduccion||'',placeholder:'dd/mm/aaaa',
-              onChange:e=>upd({fechaProduccion:e.target.value})})
           ),
           React.createElement('div',{},
             React.createElement(Lbl,{t:'Localización'}),
             React.createElement('input',{value:p.localizacion||'',placeholder:'Barcelona, exterior...',
               onChange:e=>upd({localizacion:e.target.value})})
           ),
-          React.createElement('div',{style:{display:'flex',flexDirection:'column'}},
+          React.createElement('div',{},
             React.createElement(Lbl,{t:'Días de rodaje'}),
             React.createElement('input',{type:'number',value:p.diasRodaje||0,className:'nospin',
               onChange:e=>upd({diasRodaje:parseInt(e.target.value)||0})})
@@ -954,17 +960,17 @@ function Editor({proyecto, proyectoVersiones, onBack, onSave, onSavePDF, clients
         React.createElement('div',{style:{display:'grid',gridTemplateColumns:'65fr 35fr',gap:10}},
           React.createElement('div',{},
             React.createElement(Lbl,{t:'Descripción del proyecto'}),
-            React.createElement('textarea',{value:p.descripcion||'',rows:4,
+            React.createElement('textarea',{value:p.descripcion||'',rows:5,
               placeholder:'Descripción detallada del proyecto...',
               onChange:e=>upd({descripcion:e.target.value}),
-              style:{resize:'vertical',minHeight:80}})
+              style:{resize:'vertical',minHeight:100}})
           ),
           React.createElement('div',{},
             React.createElement(Lbl,{t:'No incluye'}),
-            React.createElement('textarea',{value:p.noIncluye||'',rows:4,
+            React.createElement('textarea',{value:p.noIncluye||'',rows:5,
               placeholder:'Otros formatos, versiones, idiomas...',
               onChange:e=>upd({noIncluye:e.target.value}),
-              style:{resize:'vertical',minHeight:80}})
+              style:{resize:'vertical',minHeight:100}})
           )
         )
       ),
@@ -1106,20 +1112,17 @@ function Editor({proyecto, proyectoVersiones, onBack, onSave, onSavePDF, clients
         display:'flex',flexDirection:'column',gap:8}},
         React.createElement('button',{onClick:()=>onSavePDF(p),disabled:pdfBusy,style:{
           background:'var(--red)',color:'white',padding:'10px',fontSize:13,width:'100%'
-        }},pdfBusy?'↑ Subiendo...':'🖨 Exportar PDF'),
-        React.createElement('button',{onClick:()=>{
-          const html=buildPDF(p,calcTotals(p),p.codigo);
-          const b=new Blob([html],{type:'text/html'});
-          const url=URL.createObjectURL(b);
-          const a=document.createElement('a');
-          a.href=url; a.download=`${p.codigo}_${(p.cliente||'presupuesto').replace(/\s+/g,'_')}.html`;
-          document.body.appendChild(a); a.click(); document.body.removeChild(a);
-          setTimeout(()=>URL.revokeObjectURL(url),5000);
-        },style:{background:'var(--surface2)',color:'var(--text2)',padding:'8px',fontSize:12,width:'100%'}
-        },'⬇ Descargar HTML local'),
-        p.pdfUrl&&React.createElement('a',{href:p.pdfUrl,target:'_blank',style:{
-          display:'block',textAlign:'center',fontSize:12,color:'var(--blue)',padding:'6px'
-        }},'Ver PDF en Drive')
+        }},pdfBusy?'↑ Guardando...':'☁ Guardar PDF'),
+        React.createElement('button',{
+          onClick:()=>exportPDFlocal(p),
+          style:{background:'var(--surface2)',color:'var(--text)',padding:'10px',fontSize:13,
+            width:'100%',border:'1px solid var(--border2)'}
+        },'🖨 Exportar PDF'),
+        p.pdfUrl&&React.createElement('button',{
+          onClick:()=>window.open(p.pdfUrl,'_blank'),
+          style:{background:'transparent',color:'var(--blue)',padding:'8px',fontSize:12,
+            width:'100%',border:'1px solid var(--border)'}
+        },'↗ Ver en Drive')
       )
     )
   );
@@ -1369,7 +1372,7 @@ function App() {
       const url=await fbUploadPDF(proyecto,html);
       const updated={...proyecto,pdfUrl:url,savedToDrive:true};
       await fbSave(updated);
-      flash('✓ PDF guardado en Firebase Storage');
+      flash('✓ PDF guardado en Drive');
     } catch(e){ flash('Error PDF: '+e.message,'error'); }
     setPdfBusy(false);
   };
