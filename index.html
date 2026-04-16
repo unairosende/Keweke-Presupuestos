@@ -7,7 +7,7 @@
   <script type="module">
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js';
     import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js';
-    import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot, query, orderBy, serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js';
+    import { getFirestore, collection, doc, setDoc, getDoc, deleteDoc, onSnapshot, query, orderBy, serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js';
     import { getStorage, ref, uploadString, getDownloadURL } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-storage.js';
     const firebaseConfig = {
       apiKey: "AIzaSyDWaTaxRbwED5stUqDLy6MH9RG52hVR39M",
@@ -23,7 +23,7 @@
     const db = getFirestore(app);
     const storage = getStorage(app);
     window._FB = { auth, db, storage, GoogleAuthProvider, signInWithPopup, signOut,
-      onAuthStateChanged, collection, doc, setDoc, deleteDoc, onSnapshot, query, orderBy,
+      onAuthStateChanged, collection, doc, setDoc, getDoc, deleteDoc, onSnapshot, query, orderBy,
       serverTimestamp, ref, uploadString, getDownloadURL };
     window._FB_READY = true;
     window.dispatchEvent(new Event('fb-ready'));
@@ -396,24 +396,40 @@ async function fbDelete(id) {
   const {db, doc, deleteDoc} = await waitFB();
   await deleteDoc(doc(db,'presupuestos',id));
 }
-async function fbUploadPDF(proyecto, html) {
-  const {storage, ref, uploadString, getDownloadURL} = await waitFB();
-  const yr = new Date().getFullYear();
-  const path = `pdfs/${yr}/${proyecto.codigo}_${proyecto.cliente}_${proyecto.nombre}.html`;
-  const r2 = ref(storage, path);
-  await uploadString(r2, html, 'raw', {contentType:'text/html; charset=utf-8'});
-  return getDownloadURL(r2);
+async function fbSavePDFhtml(proyecto, html) {
+  const {db, doc, setDoc, serverTimestamp} = await waitFB();
+  // Store HTML in a separate Firestore document to avoid 1MB limit issues
+  await setDoc(doc(db,'presupuestos_pdf', proyecto.id), {
+    html,
+    codigo: proyecto.codigo,
+    updatedAt: serverTimestamp()
+  });
+}
+async function fbGetPDFhtml(id) {
+  const {db, doc, getDoc} = await waitFB();
+  const snap = await getDoc(doc(db,'presupuestos_pdf', id));
+  return snap.exists() ? snap.data().html : null;
 }
 
 function exportPDFlocal(p) {
   const tots = calcTotals(p);
   const html = buildPDF(p, tots, p.codigo);
-  // Open in new window and trigger print dialog (browser saves as PDF)
   const win = window.open('','_blank');
   win.document.write(html);
   win.document.close();
   win.focus();
   setTimeout(()=>{ win.print(); }, 600);
+}
+
+async function openSavedPDF(id) {
+  try {
+    const html = await fbGetPDFhtml(id);
+    if (!html) { alert('No hay PDF guardado para este presupuesto.'); return; }
+    const blob = new Blob([html], {type:'text/html; charset=utf-8'});
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
+    setTimeout(()=>URL.revokeObjectURL(url), 30000);
+  } catch(e) { alert('Error abriendo PDF: '+e.message); }
 }
 
 // ── GEMINI AI ─────────────────────────────────────────────────────────────────
@@ -747,11 +763,10 @@ function Dashboard({proyectos, onSelect, onNew, onDelete, clients}) {
               React.createElement('div',{style:{fontSize:12,color:'var(--text3)',width:80,textAlign:'right',flexShrink:0}},
                 p.fecha?new Date(p.fecha+'T12:00').toLocaleDateString('es-ES',{day:'2-digit',month:'short',year:'2-digit'}):'—'
               ),
-              p.pdfUrl&&React.createElement('a',{
-                href:p.pdfUrl, target:'_blank',
-                onClick:e=>e.stopPropagation(),
-                style:{fontSize:11,color:'var(--blue)',flexShrink:0,textDecoration:'none'}
-              },'PDF'),
+              p.savedToDrive&&React.createElement('span',{style:{fontSize:11,color:'var(--green)',flexShrink:0,
+                cursor:'pointer',textDecoration:'underline'},
+                onClick:e=>{e.stopPropagation();openSavedPDF(p.id);}
+              },'✓ PDF'),
               React.createElement('button',{
                 onClick:e=>{ e.stopPropagation(); if(confirm(`¿Eliminar "${p.codigo}"?`)) onDelete(p.id); },
                 style:{background:'transparent',color:'var(--text3)',padding:'4px 8px',flexShrink:0,fontSize:16},
@@ -830,7 +845,7 @@ function Editor({proyecto, proyectoVersiones, onBack, onSave, onSavePDF, clients
   const [p,setP] = useState(proyectoActivo);
   const saveTimer = useRef(null);
 
-  useEffect(()=>{ setP(proyectoActivo); },[proyectoActivo?.id, verIdx]);
+  useEffect(()=>{ setP(proyectoActivo); },[proyectoActivo?.id, verIdx, proyectoActivo?.pdfUrl]);
 
   const upd = useCallback(cb=>{
     setP(prev=>{
@@ -1122,7 +1137,7 @@ function Editor({proyecto, proyectoVersiones, onBack, onSave, onSavePDF, clients
           onClick:()=>window.open(p.pdfUrl,'_blank'),
           style:{background:'transparent',color:'var(--blue)',padding:'8px',fontSize:12,
             width:'100%',border:'1px solid var(--border)'}
-        },'↗ Ver en Drive')
+        },'↗ Ver PDF guardado')
       )
     )
   );
@@ -1370,7 +1385,7 @@ function App() {
     try {
       const html=buildPDF(proyecto,calcTotals(proyecto),proyecto.codigo);
       const url=await fbUploadPDF(proyecto,html);
-      const updated={...proyecto,pdfUrl:url,savedToDrive:true};
+      const updated={...proyecto,savedToDrive:true,pdfUrl:url};
       await fbSave(updated);
       flash('✓ PDF guardado en Drive');
     } catch(e){ flash('Error PDF: '+e.message,'error'); }
