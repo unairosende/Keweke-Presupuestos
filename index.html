@@ -395,7 +395,35 @@ async function fbSave(proyecto) {
   await setDoc(doc(db,'presupuestos',proyecto.id), {...proyecto, importe:tots.total, updatedAt:serverTimestamp()});
 }
 async function fbDelete(id) {
-  const {db, doc, deleteDoc} = await waitFB();
+  const {db, doc, deleteDoc, storage, ref} = await waitFB();
+  // First get the document to retrieve pdfUrl and driveFileId
+  const {getDoc} = window._FB;
+  const snap = await getDoc(doc(db,'presupuestos',id));
+  if(snap.exists()) {
+    const data = snap.data();
+    // Delete from Firebase Storage
+    if(data.pdfUrl) {
+      try {
+        const match = data.pdfUrl.match(/pdfs%2F[^?]+/);
+        if(match) {
+          const path = decodeURIComponent(match[0]);
+          const storageRef = ref(storage, path);
+          const {deleteObject} = await import('https://www.gstatic.com/firebasejs/11.6.0/firebase-storage.js');
+          await deleteObject(storageRef);
+        }
+      } catch(e) { console.warn('Storage delete:', e.message); }
+    }
+    // Delete from Drive via Cloud Function
+    if(data.driveFileId) {
+      try {
+        await fetch('https://europe-west1-keweke-presupuestos-583aa.cloudfunctions.net/deleteDriveFile', {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({fileId: data.driveFileId})
+        });
+      } catch(e) { console.warn('Drive delete:', e.message); }
+    }
+  }
   await deleteDoc(doc(db,'presupuestos',id));
 }
 async function fbUploadPDF(proyecto, html) {
