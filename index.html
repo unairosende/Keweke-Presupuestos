@@ -959,14 +959,32 @@ function Editor({proyecto, proyectoVersiones, onBack, onSave, onSavePDF, onCreat
 
   const [p,setP] = useState(proyectoActivo);
   const saveTimer = useRef(null);
+  const isSaving = useRef(false);
 
-  useEffect(()=>{ setP(proyectoActivo); },[proyectoActivo?.id, verIdx, proyectoActivo?.pdfUrl]);
+  // Only reset local state when switching project or version — NOT on every Firestore update
+  useEffect(()=>{ setP(proyectoActivo); },[proyectoActivo?.id, verIdx]);
+
+  // Silently sync pdfUrl and driveFileId from Firestore without disrupting editing
+  useEffect(()=>{
+    if(!proyectoActivo?.pdfUrl && !proyectoActivo?.driveFileId) return;
+    if(isSaving.current) return;
+    setP(prev=>({
+      ...prev,
+      pdfUrl: proyectoActivo.pdfUrl || prev.pdfUrl,
+      driveFileId: proyectoActivo.driveFileId || prev.driveFileId,
+      savedToDrive: proyectoActivo.savedToDrive || prev.savedToDrive,
+    }));
+  },[proyectoActivo?.pdfUrl, proyectoActivo?.driveFileId]);
 
   const upd = useCallback(cb=>{
     setP(prev=>{
       const next = typeof cb==='function'?cb(prev):{...prev,...cb};
       clearTimeout(saveTimer.current);
-      saveTimer.current = setTimeout(()=>onSave(next),800);
+      saveTimer.current = setTimeout(()=>{
+        isSaving.current = true;
+        onSave(next).finally?.(()=>{ setTimeout(()=>{ isSaving.current = false; }, 500); });
+        onSave(next);
+      },800);
       return next;
     });
   },[onSave]);
