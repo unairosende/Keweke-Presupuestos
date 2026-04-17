@@ -274,9 +274,7 @@ Proyecto privado de Keweke. Todos los derechos reservados.
 
 ## 👤 Contacto
 
-- **Keweke** — [www.keweke.com](https://www.keweke.com)
-- **C/ Muntaner 479, ático 4º · 08021 Barcelona**
-- **CIF B65430381**
+unai@keweke.com
 
 ---
 
