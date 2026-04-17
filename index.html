@@ -1232,14 +1232,14 @@ function Editor({proyecto, proyectoVersiones, onBack, onSave, onSavePDF, onCreat
           ['Base imponible', tots.conMargen, 'var(--text)', false],
           p.iva>0?['IVA ('+p.iva+'%)', tots.iva, 'var(--text2)', false]:null,
         ].filter(Boolean).map(([l,v,c])=>React.createElement('div',{key:l,style:{
-          display:'flex',justifyContent:'space-between',padding:'5px 0',
-          borderBottom:'1px solid var(--border)',fontSize:12}},
+          display:'flex',justifyContent:'space-between',padding:'7px 0',
+          borderBottom:'1px solid var(--border)',fontSize:15}},
           React.createElement('span',{style:{color:'var(--text2)'}},l),
           React.createElement('span',{style:{color:c,fontFamily:"'DM Mono',monospace"}},fEUR(v))
         )),
         React.createElement('div',{style:{display:'flex',justifyContent:'space-between',
-          paddingTop:14,marginTop:4,fontSize:16,fontWeight:700}},
-          React.createElement('span',{style:{color:'var(--text2)',textTransform:'uppercase',fontSize:12,
+          paddingTop:14,marginTop:4,fontSize:20,fontWeight:700}},
+          React.createElement('span',{style:{color:'var(--text2)',textTransform:'uppercase',fontSize:14,
             alignSelf:'center'}}, 'TOTAL'),
           React.createElement('span',{style:{color:'var(--red)',fontFamily:"'DM Mono',monospace"}},fEUR(tots.total))
         )
