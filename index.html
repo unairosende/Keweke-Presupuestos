@@ -1438,7 +1438,9 @@ function LoginScreen({onLogin,busy,err}) {
     React.createElement('div',{style:{textAlign:'center'}},
       React.createElement('img',{src:LOGO,style:{height:44,marginBottom:20}}),
       React.createElement('p',{style:{color:'var(--text2)',fontSize:14,marginTop:6}},
-        'Gestión de presupuestos · Productora audiovisual')
+        'Gestión de presupuestos · Productora audiovisual'),
+      React.createElement('p',{style:{color:'var(--text3)',fontSize:12,marginTop:4}},
+        'Acceso exclusivo para cuentas @keweke.com')
     ),
     React.createElement('button',{onClick:onLogin,disabled:busy,style:{
       background:'white',color:'#111',padding:'13px 28px',
@@ -1487,7 +1489,21 @@ function App() {
   useEffect(()=>{
     if(!fbReady) return;
     const {auth,onAuthStateChanged} = window._FB;
-    return onAuthStateChanged(auth,u=>{ setUser(u); if(!u){ setProyectos([]); } });
+    return onAuthStateChanged(auth, async u=>{
+      if(u) {
+        // Only allow @keweke.com accounts
+        if(!u.email?.endsWith('@keweke.com')) {
+          const {signOut} = window._FB;
+          await signOut(auth);
+          setAuthErr('Acceso restringido a cuentas @keweke.com');
+          setUser(null);
+          setProyectos([]);
+          return;
+        }
+      }
+      setUser(u);
+      if(!u){ setProyectos([]); }
+    });
   },[fbReady]);
 
   useEffect(()=>{
@@ -1506,8 +1522,12 @@ function App() {
     if(!fbReady) return;
     setAuthBusy(true); setAuthErr('');
     try {
-      const {auth,GoogleAuthProvider,signInWithPopup}=window._FB;
-      await signInWithPopup(auth,new GoogleAuthProvider());
+      const {auth,GoogleAuthProvider,signInWithPopup,signOut}=window._FB;
+      const result = await signInWithPopup(auth,new GoogleAuthProvider());
+      if(!result.user.email?.endsWith('@keweke.com')) {
+        await signOut(auth);
+        setAuthErr('Acceso restringido a cuentas @keweke.com');
+      }
     } catch(e){ setAuthErr(e.code==='auth/popup-closed-by-user'?'Ventana cerrada. Inténtalo de nuevo.':e.message); }
     setAuthBusy(false);
   };
