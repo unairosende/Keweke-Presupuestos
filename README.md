@@ -92,9 +92,11 @@ GitHub Pages lo desplegará automáticamente en `https://unairosende.github.io/k
 
 ### 4. Desplegar las Cloud Functions (solo si se modifican)
 
+> ⚠️ **Primera vez clonando el repo**: las dependencias de Node (`node_modules/`) no están en el repositorio por razones de tamaño y seguridad. Hay que instalarlas localmente con `npm install` antes del primer despliegue.
+
 ```bash
 cd functions
-npm install
+npm install        # Instala las dependencias (genera node_modules/)
 firebase deploy --only functions
 ```
 
