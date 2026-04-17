@@ -492,7 +492,6 @@ REGLAS:
 - Si se menciona "un día", jornadas=1; "dos días", jornadas=2, etc.
 - Para equipo técnico: si se menciona el rol, uds=1 y jornadas=días de rodaje
 - Infiere datos razonables aunque no se digan (ej: si hay rodaje, siempre hay catering)
-- El campo "noIncluye" siempre incluye: "Otros formatos, versiones, idiomas.\nOtros conceptos no descritos"
 
 DESCRIPCIÓN DEL PROYECTO: "${texto}"
 
@@ -502,7 +501,6 @@ Devuelve ÚNICAMENTE un objeto JSON válido con este formato exacto, sin texto a
   "nombre": "título del proyecto",
   "localizacion": "ciudad o lugar",
   "descripcion": "descripción completa del proyecto en 2-3 frases",
-  "noIncluye": "Otros formatos, versiones, idiomas.\\nOtros conceptos no descritos",
   "partidas": {
     "NombreSeccion": {
       "Concepto exacto": {"uds": N, "jornadas": N}
@@ -582,7 +580,12 @@ function applyGemini(secciones, gd) {
 
         if(match) {
           console.log(`✓ Match: [${sec.nombre}] "${p.concepto}" → uds:${match.uds} jornadas:${match.jornadas}`);
-          return {...p, uds: Number(match.uds)||0, jornadas: Number(match.jornadas)||1};
+          const uds = Number(match.uds) || 0;
+          const jornadas = Number(match.jornadas) || 0;
+          // Si la partida no aplica (uds=0), dejar jornadas también a 0 para mantener consistencia
+          // con la creación manual y que el resumen muestre los campos vacíos en gris
+          if (uds === 0) return {...p, uds: 0, jornadas: 0};
+          return {...p, uds, jornadas: jornadas || 1};
         }
         return p;
       })
@@ -1713,7 +1716,7 @@ function App() {
           fechaProduccion:geminiData.fechaProduccion||'',
           localizacion:geminiData.localizacion||'',
           descripcion:geminiData.descripcion||'',
-          noIncluye:geminiData.noIncluye||'',
+          noIncluye:'Otras partidas no descritas.',
           estado:'borrador',margen:20,iva:0,
           secciones,pdfUrl:'',savedToDrive:false,
           createdAt:new Date().toISOString(),
