@@ -471,10 +471,15 @@ Devuelve ÚNICAMENTE un objeto JSON válido con este formato exacto, sin texto a
   }
 }`;
 
-  const { functions, httpsCallable } = window._FB;
-  const fn = httpsCallable(functions, 'geminiGenerate');
-  const res = await fn({ prompt });
-  const raw = res.data.result || '{}';
+  const CLOUD_FN_URL = 'https://europe-west1-keweke-presupuestos-583aa.cloudfunctions.net/geminiGenerate';
+  const res = await fetch(CLOUD_FN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt })
+  });
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
+  const raw = data.result || '{}';
   try {
     return JSON.parse(raw.replace(/```json?\n?/g,'').replace(/```/g,'').trim());
   } catch(e) {
@@ -809,7 +814,16 @@ function Dashboard({proyectos, onSelect, onNew, onDelete, clients}) {
                 color:'var(--red)',width:64,flexShrink:0,fontWeight:500}},p.codigo),
               React.createElement('div',{style:{flex:1,minWidth:0}},
                 React.createElement('div',{style:{fontWeight:600,fontSize:14,
-                  whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}},p.nombre||'Sin nombre'),
+                  whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',
+                  display:'flex',alignItems:'center',gap:8}},
+                  p.nombre||'Sin nombre',
+                  (()=>{ const vers=proyectos.filter(x=>x.codigo===p.codigo); return vers.length>1?
+                    React.createElement('span',{style:{fontSize:10,color:'var(--text3)',
+                      background:'var(--surface2)',padding:'1px 6px',borderRadius:4,flexShrink:0}},
+                      'v'+vers.sort((a,b)=>(b.updatedAt?.seconds||0)-(a.updatedAt?.seconds||0)).findIndex(x=>x.id===p.id===0?1:vers.length)
+                      +' · '+vers.length+' vers.')
+                    :null; })()
+                ),
                 React.createElement('div',{style:{fontSize:12,color:'var(--text2)',marginTop:1,
                   whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}},p.cliente||'—'),
                 p.descripcion&&React.createElement('div',{style:{fontSize:11,color:'var(--text3)',marginTop:2,
@@ -898,7 +912,7 @@ function SpinnerInput({value, onChange, min=0}) {
 }
 
 // ── EDITOR ────────────────────────────────────────────────────────────────────
-function Editor({proyecto, proyectoVersiones, onBack, onSave, onSavePDF, clients, allCodes, pdfBusy}) {
+function Editor({proyecto, proyectoVersiones, onBack, onSave, onSavePDF, onCreateVersion, clients, allCodes, pdfBusy}) {
   const versiones = proyectoVersiones || [proyecto];
   const [verIdx, setVerIdx] = useState(0);
   const proyectoActivo = versiones[verIdx] || proyecto;
@@ -982,25 +996,36 @@ function Editor({proyecto, proyectoVersiones, onBack, onSave, onSavePDF, clients
             Object.entries(ESTADO_LABELS).map(([v,l])=>React.createElement('option',{key:v,value:v},l))
           ),
           // Navegador de versiones
-          versiones.length>1&&React.createElement('div',{style:{display:'flex',alignItems:'center',gap:6,
-            marginLeft:'auto',background:'var(--surface2)',borderRadius:8,padding:'3px 8px',
-            border:'1px solid var(--border)'}},
-            React.createElement('button',{
-              onClick:()=>setVerIdx(Math.min(versiones.length-1, verIdx+1)),
-              disabled:verIdx>=versiones.length-1,
-              style:{background:'transparent',color:verIdx>=versiones.length-1?'var(--text3)':'var(--text)',
-                padding:'2px 6px',fontSize:12}
-            },'‹'),
-            React.createElement('span',{style:{fontSize:11,color:'var(--text2)',whiteSpace:'nowrap'}},
-              `v${versiones.length-verIdx} / ${versiones.length}`,
-              verIdx===0?' (última)':''
+          React.createElement('div',{style:{display:'flex',alignItems:'center',gap:8,marginLeft:'auto'}},
+            versiones.length>1&&React.createElement('div',{style:{display:'flex',alignItems:'center',gap:4,
+              background:'var(--surface2)',borderRadius:8,padding:'3px 8px',
+              border:'1px solid var(--border)'}},
+              React.createElement('button',{
+                onClick:()=>setVerIdx(Math.min(versiones.length-1, verIdx+1)),
+                disabled:verIdx>=versiones.length-1,
+                style:{background:'transparent',color:verIdx>=versiones.length-1?'var(--text3)':'var(--text)',
+                  padding:'2px 6px',fontSize:12}
+              },'‹'),
+              React.createElement('span',{style:{fontSize:11,color:'var(--text2)',whiteSpace:'nowrap'}},
+                `v${versiones.length-verIdx} / ${versiones.length}`,
+                verIdx===0?React.createElement('span',{style:{color:'var(--green)',marginLeft:4}},'● última'):''
+              ),
+              React.createElement('button',{
+                onClick:()=>setVerIdx(Math.max(0, verIdx-1)),
+                disabled:verIdx<=0,
+                style:{background:'transparent',color:verIdx<=0?'var(--text3)':'var(--text)',
+                  padding:'2px 6px',fontSize:12}
+              },'›')
             ),
             React.createElement('button',{
-              onClick:()=>setVerIdx(Math.max(0, verIdx-1)),
-              disabled:verIdx<=0,
-              style:{background:'transparent',color:verIdx<=0?'var(--text3)':'var(--text)',
-                padding:'2px 6px',fontSize:12}
-            },'›')
+              onClick:()=>onCreateVersion&&onCreateVersion(p),
+              title:'Crear nueva versión de este presupuesto',
+              style:{background:'var(--surface2)',color:'var(--text2)',
+                padding:'4px 12px',fontSize:12,border:'1px solid var(--border)',
+                borderRadius:6,fontWeight:600,display:'flex',alignItems:'center',gap:6},
+              onMouseEnter:e=>{ e.currentTarget.style.borderColor='var(--red)'; e.currentTarget.style.color='var(--red)'; },
+              onMouseLeave:e=>{ e.currentTarget.style.borderColor='var(--border)'; e.currentTarget.style.color='var(--text2)'; }
+            },'+ Nueva versión')
           )
         ),
 
@@ -1543,7 +1568,24 @@ function App() {
               clients,allCodes,pdfBusy,
               onBack:()=>{ setView('dashboard'); setCurId(null); },
               onSave:savePresupuesto,
-              onSavePDF:savePDF})
+              onSavePDF:savePDF,
+              onCreateVersion:async(proyectoBase)=>{
+                const versionesActuales = proyectos.filter(p=>p.codigo===proyectoBase.codigo);
+                const newVerNum = versionesActuales.length + 1;
+                const id='p'+Date.now().toString(36)+Math.random().toString(36).slice(2,5);
+                const nueva={
+                  ...proyectoBase,
+                  id,
+                  versionNum: newVerNum,
+                  estado:'borrador',
+                  pdfUrl:'',savedToDrive:false,
+                  createdAt:new Date().toISOString(),
+                  updatedAt:new Date().toISOString()
+                };
+                await fbSave(nueva);
+                setCurId(id);
+                flash('✓ v'+newVerNum+' creada — '+proyectoBase.codigo);
+              }})
           : React.createElement('div',{style:{padding:48,color:'var(--text3)'}},
               'Presupuesto no encontrado.')
     ),
