@@ -537,28 +537,14 @@ async function exportPDFlocal(p) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-// Descarga directamente el PDF guardado en Storage
+// Abre el PDF guardado en Storage. El navegador gestiona la descarga/previsualización
+// sin problemas de CORS porque es una navegación directa, no un fetch desde JS.
 async function openSavedPDF(proyecto) {
   if (!proyecto?.pdfUrl) {
     alert('No hay PDF guardado para este presupuesto.');
     return;
   }
-  try {
-    const safeName = `${proyecto.codigo}_${(proyecto.cliente||'').replace(/[^a-zA-Z0-9]/g,'_')}_${(proyecto.nombre||'').replace(/[^a-zA-Z0-9]/g,'_')}`;
-    const res = await fetch(proyecto.pdfUrl);
-    if (!res.ok) throw new Error(`Error ${res.status}`);
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = safeName + '.pdf';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  } catch(e) {
-    alert('Error descargando PDF: ' + e.message);
-  }
+  window.open(proyecto.pdfUrl, '_blank');
 }
 
 // ── GEMINI AI ─────────────────────────────────────────────────────────────────
