@@ -8,7 +8,7 @@
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js';
     import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js';
     import { getFirestore, collection, doc, setDoc, getDoc, deleteDoc, onSnapshot, query, orderBy, serverTimestamp } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js';
-    import { getStorage, ref, uploadString, getDownloadURL } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-storage.js';
+    import { getStorage, ref, uploadString, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-storage.js';
     import { getFunctions, httpsCallable } from 'https://www.gstatic.com/firebasejs/11.6.0/firebase-functions.js';
     const firebaseConfig = {
       apiKey: "AIzaSyDWaTaxRbwED5stUqDLy6MH9RG52hVR39M",
@@ -26,7 +26,7 @@
     const functions = getFunctions(app, 'europe-west1');
     window._FB = { auth, db, storage, functions, httpsCallable, GoogleAuthProvider, signInWithPopup, signOut,
       onAuthStateChanged, collection, doc, setDoc, getDoc, deleteDoc, onSnapshot, query, orderBy,
-      serverTimestamp, ref, uploadString, getDownloadURL };
+      serverTimestamp, ref, uploadString, uploadBytes, getDownloadURL };
     window._FB_READY = true;
     window.dispatchEvent(new Event('fb-ready'));
   </script>
@@ -400,10 +400,44 @@ function nextCode(codes) {
 function waitFB() {
   return new Promise(r => window._FB_READY ? r(window._FB) : window.addEventListener('fb-ready',()=>r(window._FB),{once:true}));
 }
-async function fbSave(proyecto) {
-  const {db, doc, setDoc, serverTimestamp} = await waitFB();
+// Guarda un presupuesto. Si es nuevo añade createdBy; siempre actualiza updatedBy.
+// El parámetro `user` es el objeto de Firebase Auth (o null si no hay sesión).
+async function fbSave(proyecto, user) {
+  const {db, doc, setDoc, getDoc, serverTimestamp} = await waitFB();
   const tots = calcTotals(proyecto);
-  await setDoc(doc(db,'presupuestos',proyecto.id), {...proyecto, importe:tots.total, updatedAt:serverTimestamp()});
+
+  // Info mínima del usuario para guardar en Firestore (sin PII innecesaria)
+  const userInfo = user ? {
+    uid: user.uid,
+    name: user.displayName || user.email || 'Usuario',
+    email: user.email || '',
+    photo: user.photoURL || ''
+  } : null;
+
+  // Comprobar si el documento ya existe para saber si es creación o edición
+  let existing = null;
+  try {
+    const snap = await getDoc(doc(db,'presupuestos',proyecto.id));
+    if (snap.exists()) existing = snap.data();
+  } catch(_) {}
+
+  const data = {
+    ...proyecto,
+    importe: tots.total,
+    updatedAt: serverTimestamp()
+  };
+
+  if (userInfo) {
+    // Siempre actualizar updatedBy
+    data.updatedBy = userInfo;
+    // Solo asignar createdBy la primera vez (nunca sobrescribir)
+    if (!existing?.createdBy) {
+      data.createdBy = userInfo;
+      data.createdAt = existing?.createdAt || new Date().toISOString();
+    }
+  }
+
+  await setDoc(doc(db,'presupuestos',proyecto.id), data);
 }
 async function fbDelete(id) {
   const {db, doc, deleteDoc, storage, ref} = await waitFB();
@@ -437,35 +471,94 @@ async function fbDelete(id) {
   }
   await deleteDoc(doc(db,'presupuestos',id));
 }
+// Llama a la Cloud Function renderPDF para convertir el HTML en PDF real
+// y sube el PDF a Storage. Devuelve la URL de descarga.
 async function fbUploadPDF(proyecto, html) {
-  const {storage, ref, uploadString, getDownloadURL} = await waitFB();
+  const {storage, ref, uploadBytes, getDownloadURL} = await waitFB();
   const yr = new Date().getFullYear();
   const safeName = `${proyecto.codigo}_${(proyecto.cliente||'').replace(/[^a-zA-Z0-9]/g,'_')}_${(proyecto.nombre||'').replace(/[^a-zA-Z0-9]/g,'_')}`;
-  const path = `pdfs/${yr}/${safeName}.html`;
+  const path = `pdfs/${yr}/${safeName}.pdf`;
+
+  // 1. Pedir a la Cloud Function que convierta HTML → PDF
+  const RENDER_URL = 'https://europe-west1-keweke-presupuestos-583aa.cloudfunctions.net/renderPDF';
+  const renderRes = await fetch(RENDER_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ html, filename: safeName })
+  });
+  if (!renderRes.ok) {
+    let msg = `Error ${renderRes.status} generando PDF`;
+    try { const e = await renderRes.json(); if (e?.error) msg += ': ' + e.error; } catch(_) {}
+    throw new Error(msg);
+  }
+  const pdfBlob = await renderRes.blob();
+
+  // 2. Subir el PDF a Storage
   const r2 = ref(storage, path);
-  await uploadString(r2, html, 'raw', {contentType:'text/html; charset=utf-8'});
+  await uploadBytes(r2, pdfBlob, { contentType: 'application/pdf' });
   return getDownloadURL(r2);
 }
 
-function exportPDFlocal(p) {
+// Pide a la Cloud Function que convierta el HTML en PDF real y lo descarga
+async function exportPDFlocal(p) {
   const tots = calcTotals(p);
   const html = buildPDF(p, tots, p.codigo);
-  const win = window.open('','_blank');
-  win.document.write(html);
-  win.document.close();
-  win.focus();
-  setTimeout(()=>{ win.print(); }, 600);
+  const safeName = `${p.codigo}_${(p.cliente||'').replace(/[^a-zA-Z0-9]/g,'_')}_${(p.nombre||'').replace(/[^a-zA-Z0-9]/g,'_')}`;
+  const RENDER_URL = 'https://europe-west1-keweke-presupuestos-583aa.cloudfunctions.net/renderPDF';
+
+  let res;
+  try {
+    res = await fetch(RENDER_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ html, filename: safeName })
+    });
+  } catch {
+    alert('No se pudo generar el PDF. Comprueba tu conexión.');
+    return;
+  }
+
+  if (!res.ok) {
+    let msg = `Error ${res.status} generando PDF`;
+    try { const e = await res.json(); if (e?.error) msg += ': ' + e.error; } catch(_) {}
+    alert(msg);
+    return;
+  }
+
+  // Descargar el PDF
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = safeName + '.pdf';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-async function openSavedPDF(id) {
+// Descarga directamente el PDF guardado en Storage
+async function openSavedPDF(proyecto) {
+  if (!proyecto?.pdfUrl) {
+    alert('No hay PDF guardado para este presupuesto.');
+    return;
+  }
   try {
-    const html = await fbGetPDFhtml(id);
-    if (!html) { alert('No hay PDF guardado para este presupuesto.'); return; }
-    const blob = new Blob([html], {type:'text/html; charset=utf-8'});
+    const safeName = `${proyecto.codigo}_${(proyecto.cliente||'').replace(/[^a-zA-Z0-9]/g,'_')}_${(proyecto.nombre||'').replace(/[^a-zA-Z0-9]/g,'_')}`;
+    const res = await fetch(proyecto.pdfUrl);
+    if (!res.ok) throw new Error(`Error ${res.status}`);
+    const blob = await res.blob();
     const url = URL.createObjectURL(blob);
-    window.open(url, '_blank');
-    setTimeout(()=>URL.revokeObjectURL(url), 30000);
-  } catch(e) { alert('Error abriendo PDF: '+e.message); }
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = safeName + '.pdf';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  } catch(e) {
+    alert('Error descargando PDF: ' + e.message);
+  }
 }
 
 // ── GEMINI AI ─────────────────────────────────────────────────────────────────
@@ -593,77 +686,435 @@ function applyGemini(secciones, gd) {
   });
 }
 function buildPDF(p, tots, num) {
-  const {
-    sub,
-    conMargen,
-    iva,
-    total
-  } = tots;
+  const { sub, conMargen, iva, total } = tots;
   const fN = n => new Intl.NumberFormat("es-ES", {
-    style: "currency",
-    currency: "EUR",
-    minimumFractionDigits: 2
+    style: "currency", currency: "EUR", minimumFractionDigits: 2
   }).format(n || 0);
-  const catRows = (p.secciones || []).map(sec => {
-    const ct = sec.partidas.reduce((s, i) => s + i.uds * i.jornadas * i.precio, 0);
-    return `<tr style="background:#f2f2f2"><td style="padding:5px 6px;font-size:8.5pt;font-weight:bold;color:#555;border-bottom:1px solid #ccc" colspan="2">${sec.nombre}</td><td colspan="4" style="border-bottom:1px solid #ccc"></td><td style="padding:5px 6px;font-size:8.5pt;font-weight:bold;text-align:right;border-bottom:1px solid #ccc">${fN(ct)}</td></tr>` + sec.partidas.filter(it => !(it.uds === 0 && it.jornadas === 0)).map(it => {
+
+  // Partidas activas por sección (uds>0 y jornadas>0)
+  const activeRows = (p.secciones || []).map(sec => {
+    const activePartidas = sec.partidas.filter(it => !(it.uds === 0 && it.jornadas === 0));
+    if (activePartidas.length === 0) return "";
+    const sectionTotal = activePartidas.reduce((s, it) => s + it.uds * it.jornadas * it.precio * (1 - (it.dto || 0) / 100), 0);
+
+    const rows = activePartidas.map(it => {
       const dtoV = it.dto || 0;
       const lineT = it.uds * it.jornadas * it.precio * (1 - dtoV / 100);
-      return `<tr><td style="padding:4px 6px;font-size:8.5pt;border-bottom:1px solid #eee">${it.concepto}</td><td style="padding:4px;font-size:8.5pt;text-align:center;border-bottom:1px solid #eee;width:32px">${it.uds}</td><td style="padding:4px;font-size:8.5pt;text-align:center;border-bottom:1px solid #eee;width:42px">${it.jornadas}</td><td style="padding:4px 6px;font-size:8.5pt;text-align:right;border-bottom:1px solid #eee;width:70px">${it.precio > 0 ? fN(it.precio) : "€0,00"}</td><td style="padding:4px;font-size:8.5pt;text-align:center;border-bottom:1px solid #eee;width:30px">${dtoV > 0 ? dtoV + "%" : ""}</td><td style="padding:4px 6px;font-size:8.5pt;text-align:right;border-bottom:1px solid #eee;width:70px">${fN(lineT)}</td><td style="padding:4px;border-bottom:1px solid #eee;width:70px"></td></tr>`;
+      return `<tr>
+        <td class="c">${it.concepto}</td>
+        <td class="n">${it.uds}</td>
+        <td class="n">${it.jornadas}</td>
+        <td class="r">${fN(it.precio)}</td>
+        <td class="n">${dtoV > 0 ? dtoV + "%" : "—"}</td>
+        <td class="r total">${fN(lineT)}</td>
+      </tr>`;
     }).join("");
+
+    return `
+      <tr class="section-header">
+        <td colspan="5">${sec.nombre}</td>
+        <td class="r">${fN(sectionTotal)}</td>
+      </tr>
+      ${rows}
+    `;
   }).join("");
-  const sumRows = (p.secciones || []).map((sec, i) => `<tr style="background:${i % 2 === 0 ? "#f2f2f2" : "white"}"><td style="padding:5px 8px;font-size:8.5pt">${sec.nombre}</td><td style="padding:5px 8px;font-size:8.5pt;text-align:right">${fN(sec.partidas.reduce((s, it) => s + it.uds * it.jornadas * it.precio * (1-(it.dto||0)/100), 0))}</td></tr>`).join("");
-  const hdr1 = `<table width="100%" style="margin-bottom:22px"><tr><td><img src="${LOGO}" style="height:38px;width:auto"/></td></tr></table>`;
-  const hdr2 = `<div style="height:38px;margin-bottom:22px"></div>`;
-  const footer = `<div style="margin-top:24px;padding-top:12px;border-top:1px solid #ccc;text-align:center;font-size:7pt;color:#888">C/ Muntaner 479, ático 4º · 08021 Barcelona · CIF B65430381 · www.keweke.com</div>`;
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>@page{size:A4;margin:18mm 22mm}*{box-sizing:border-box;font-family:'DM Sans',sans-serif}body{color:#1a1a1a;font-size:9pt}table{border-collapse:collapse}.page{page-break-after:always}.page:last-child{page-break-after:avoid}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style></head><body>
-<div class="page">${hdr1}
-<table width="100%" style="border:1px solid #ccc;margin-bottom:10px">
-<tr><td colspan="2" style="padding:5px 8px;font-weight:bold;font-size:8.5pt;border-bottom:1px solid #ccc">PRESUPUESTO</td></tr>
-<tr><td style="padding:4px 8px;font-size:8pt;color:#666;width:45%">CLIENTE</td><td style="padding:4px 8px;font-size:8pt">${p.cliente}</td></tr>
-<tr><td style="padding:4px 8px;font-size:8pt;color:#666">PROYECTO</td><td style="padding:4px 8px;font-size:8pt">${p.nombre}</td></tr>
-<tr><td style="padding:4px 8px;font-size:8pt;color:#666">FECHA</td><td style="padding:4px 8px;font-size:8pt">${p.fecha}</td></tr>
-<tr><td style="padding:4px 8px;font-size:8pt;color:#666">Nº PRESUPUESTO</td><td style="padding:4px 8px;font-size:8pt">${num}</td></tr>
-</table>
-<div style="font-size:7pt;font-weight:bold;color:#888;letter-spacing:1px;margin-bottom:3px">DESCRIPCIÓN PROYECTO</div>
-<table width="100%" style="border:1px solid #ccc;margin-bottom:10px;min-height:120px">
-<tr><td style="padding:4px 8px;font-size:8pt;color:#666;width:45%">FECHA PRODUCCIÓN</td><td style="padding:4px 8px;font-size:8pt">${p.fechaProduccion || p.fecha}</td></tr>
-<tr><td style="padding:4px 8px;font-size:8pt;color:#666">LOCALIZACIÓN</td><td style="padding:4px 8px;font-size:8pt">${p.localizacion || ""}</td></tr>
-<tr><td style="padding:4px 8px;font-size:8pt;color:#666;vertical-align:top;padding-top:10px">DESCRIPCIÓN</td><td style="padding:4px 8px;font-size:8pt;padding-top:10px">${(p.descripcion || "").replace(/\n/g, "<br>")}</td></tr>
-${p.noIncluye ? `<tr><td style="padding:12px 8px 4px;font-size:8pt;color:#666;vertical-align:top">No incluye:</td><td style="padding:12px 8px 4px;font-size:8pt">${p.noIncluye.replace(/\n/g, "<br>")}</td></tr>` : ""}
-</table>
-<div style="font-size:7pt;font-weight:bold;color:#888;letter-spacing:1px;margin-bottom:3px">RESUMEN PRESUPUESTO</div>
-<table width="100%" style="border:1px solid #ccc">${sumRows}
-<tr style="background:#f8f8f8"><td style="padding:5px 8px;font-size:8.5pt">Sub Total</td><td style="padding:5px 8px;font-size:8.5pt;text-align:right">${fN(sub)}</td></tr>
-<tr style="background:#f8f8f8"><td style="padding:5px 8px;font-size:8.5pt">Mark up productora ${p.margen}%</td><td style="padding:5px 8px;font-size:8.5pt;text-align:right">${fN(conMargen-sub)}</td></tr>
-<tr style="background:#d6d6d6"><td style="padding:6px 8px;font-size:8.5pt;font-weight:bold">Importe Total</td><td style="padding:6px 8px;font-size:8.5pt;font-weight:bold;text-align:right">${fN(conMargen)}</td></tr>
-</table></div>
-<div class="page">${hdr2}
-<table width="100%" style="border:1px solid #ccc;margin-bottom:14px">
-<thead><tr style="background:#d6d6d6">
-<th style="padding:5px 6px;font-size:8pt;text-align:left;border-right:1px solid #ccc">PRESUPUESTO</th>
-<th style="padding:5px 4px;font-size:8pt;text-align:center;border-right:1px solid #ccc;width:34px">Uds</th>
-<th style="padding:5px 4px;font-size:8pt;text-align:center;border-right:1px solid #ccc;width:44px">Jornad.</th>
-<th style="padding:5px 6px;font-size:8pt;text-align:right;border-right:1px solid #ccc;width:72px">Unitario</th>
-<th style="padding:5px 4px;font-size:8pt;text-align:center;border-right:1px solid #ccc;width:30px">Dto</th>
-<th style="padding:5px 6px;font-size:8pt;text-align:right;border-right:1px solid #ccc;width:72px">Sub-total</th>
-<th style="padding:5px 6px;font-size:8pt;text-align:right;width:72px">TOTAL</th>
-</tr></thead>
-<tbody>${catRows}</tbody>
-</table>
-<table width="100%" style="margin-bottom:16px">
-<tr style="border-top:1px solid #ccc;border-bottom:1px solid #ccc"><td style="padding:5px 6px;font-size:8.5pt">Sub Total</td><td colspan="5"></td><td style="padding:5px 6px;font-size:8.5pt;text-align:right">${fN(sub)}</td></tr>
-<tr style="border-bottom:2px solid #ccc"><td style="padding:5px 6px;font-size:8.5pt">Mark up productora ${p.margen}%</td><td colspan="3"></td><td style="padding:5px 6px;font-size:8.5pt;text-align:center">${p.margen}%</td><td></td><td style="padding:5px 6px;font-size:8.5pt;text-align:right">${fN(conMargen - sub)}</td></tr>
-<tr style="border-bottom:2px solid #333"><td style="padding:6px;font-size:9pt;font-weight:bold">Importe Total</td><td colspan="5"></td><td style="padding:6px;font-size:9pt;font-weight:bold;text-align:right">${fN(conMargen)}</td></tr>
-</table>
-<div style="font-size:7pt;color:#888;line-height:1.8">No incluye IVA. Condiciones de pago: 50% a la aprobación del proyecto + 50% a la entrega de másters<br>Este presupuesto tiene una validez de 30 días.<br>Será requisito imprescindible la firma de este presupuesto para la aprobación del proyecto<br>Conservación de materiales brutos de la producción será por un máximo de 3 meses.</div>
-${footer}
-</div></body></html>`;
+
+  // Resumen por secciones
+  const sumRows = (p.secciones || []).map(sec => {
+    const t = sec.partidas.reduce((s, it) => s + it.uds * it.jornadas * it.precio * (1 - (it.dto || 0) / 100), 0);
+    if (t === 0) return "";
+    return `<tr><td>${sec.nombre}</td><td class="r">${fN(t)}</td></tr>`;
+  }).join("");
+
+  const margenEuros = conMargen - sub;
+  const descripcionHTML = (p.descripcion || "").replace(/\n/g, "<br>");
+  const noIncluyeHTML = (p.noIncluye || "").replace(/\n/g, "<br>");
+
+  return `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
+<title>Presupuesto ${num} · Keweke</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  @page { size: A4; margin: 18mm 18mm 14mm 18mm; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { font-family: 'DM Sans', -apple-system, sans-serif; color: #161515; font-size: 9.5pt; line-height: 1.45; }
+  .mono { font-family: 'DM Mono', 'Courier New', monospace; }
+  .red { color: #FF4A31; }
+  .muted { color: #666; }
+
+  /* ── PÁGINA 1: PORTADA / RESUMEN ────────────────────────────────────── */
+  .page { page-break-after: always; }
+  .page:last-child { page-break-after: avoid; }
+
+  /* Cabecera con logo grande */
+  .header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    padding-bottom: 24px;
+    border-bottom: 2px solid #161515;
+    margin-bottom: 32px;
+  }
+  .logo { height: 42px; width: auto; }
+  .doc-meta {
+    text-align: right;
+    font-size: 8pt;
+    color: #666;
+    line-height: 1.6;
+  }
+  .doc-meta .label {
+    font-size: 7pt;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: #999;
+  }
+  .doc-meta .code {
+    font-family: 'DM Mono', monospace;
+    font-size: 11pt;
+    color: #FF4A31;
+    font-weight: 500;
+    margin-top: 2px;
+  }
+
+  /* Título del documento */
+  .doc-title {
+    font-size: 7pt;
+    font-weight: 600;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #999;
+    margin-bottom: 6px;
+  }
+  .project-name {
+    font-size: 22pt;
+    font-weight: 500;
+    line-height: 1.15;
+    margin-bottom: 4px;
+    color: #161515;
+  }
+  .client-name {
+    font-size: 12pt;
+    color: #666;
+    margin-bottom: 28px;
+    font-weight: 400;
+  }
+
+  /* Bloque de detalles del proyecto */
+  .project-info {
+    display: flex;
+    gap: 0;
+    margin-bottom: 28px;
+    border-top: 1px solid #e1e1e1;
+    border-bottom: 1px solid #e1e1e1;
+  }
+  .info-cell {
+    flex: 1;
+    padding: 12px 16px 12px 0;
+    border-right: 1px solid #e1e1e1;
+  }
+  .info-cell:last-child { border-right: none; padding-right: 0; }
+  .info-cell:not(:first-child) { padding-left: 16px; }
+  .info-label {
+    font-size: 7pt;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: #999;
+    margin-bottom: 4px;
+  }
+  .info-value {
+    font-size: 9.5pt;
+    color: #161515;
+  }
+
+  /* Sección de descripción */
+  .section-title {
+    font-size: 7pt;
+    font-weight: 600;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #999;
+    margin-bottom: 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid #e1e1e1;
+  }
+  .description-box {
+    font-size: 9.5pt;
+    line-height: 1.55;
+    color: #333;
+    margin-bottom: 24px;
+  }
+  .no-incluye {
+    font-size: 8.5pt;
+    color: #666;
+    line-height: 1.5;
+    padding: 10px 12px;
+    background: #f7f7f7;
+    border-left: 3px solid #FF4A31;
+    margin-bottom: 28px;
+  }
+  .no-incluye .label {
+    font-weight: 600;
+    color: #161515;
+    margin-bottom: 2px;
+    display: block;
+  }
+
+  /* Resumen presupuesto (tabla lateral derecha con totales) */
+  .summary-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .summary-table td {
+    padding: 9px 12px;
+    font-size: 9.5pt;
+    border-bottom: 1px solid #f0f0f0;
+  }
+  .summary-table td.r { text-align: right; font-variant-numeric: tabular-nums; }
+  .summary-table tr.subtotal td {
+    padding-top: 14px;
+    color: #666;
+  }
+  .summary-table tr.markup td {
+    color: #666;
+    border-bottom: 2px solid #161515;
+  }
+  .summary-table tr.total-row td {
+    padding: 14px 12px;
+    font-size: 13pt;
+    font-weight: 600;
+    color: #FF4A31;
+    border-bottom: none;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ── PÁGINA 2: DESGLOSE DETALLADO ──────────────────────────────────── */
+  .detail-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 8px;
+  }
+  .detail-table thead th {
+    font-size: 7pt;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: #999;
+    text-align: left;
+    padding: 10px 8px;
+    border-bottom: 2px solid #161515;
+  }
+  .detail-table th.n { text-align: center; }
+  .detail-table th.r { text-align: right; }
+  .detail-table td {
+    padding: 7px 8px;
+    font-size: 9pt;
+    border-bottom: 1px solid #f0f0f0;
+    vertical-align: middle;
+  }
+  .detail-table td.c { color: #333; }
+  .detail-table td.n { text-align: center; font-variant-numeric: tabular-nums; color: #666; }
+  .detail-table td.r { text-align: right; font-variant-numeric: tabular-nums; }
+  .detail-table td.total { color: #161515; font-weight: 500; }
+  .detail-table tr.section-header td {
+    padding: 14px 8px 6px;
+    font-size: 7pt;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #FF4A31;
+    border-bottom: 1px solid #FF4A31;
+    background: transparent;
+  }
+  .detail-table tr.section-header td.r {
+    font-size: 9pt;
+    letter-spacing: 0;
+    text-transform: none;
+    color: #161515;
+    font-weight: 600;
+  }
+
+  /* Totales finales de la página 2 */
+  .grand-totals {
+    margin-top: 18px;
+    width: 45%;
+    margin-left: auto;
+  }
+  .grand-totals tr td {
+    padding: 7px 0;
+    font-size: 9.5pt;
+  }
+  .grand-totals tr td.r { text-align: right; font-variant-numeric: tabular-nums; }
+  .grand-totals tr.sub td { border-bottom: 1px solid #e1e1e1; color: #666; }
+  .grand-totals tr.mark td { border-bottom: 2px solid #161515; color: #666; }
+  .grand-totals tr.total td {
+    padding-top: 14px;
+    font-size: 13pt;
+    font-weight: 600;
+    color: #FF4A31;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Condiciones y footer */
+  .conditions {
+    margin-top: 36px;
+    padding: 14px 16px;
+    background: #f7f7f7;
+    font-size: 7.5pt;
+    line-height: 1.7;
+    color: #666;
+  }
+  .conditions .label {
+    font-weight: 600;
+    color: #161515;
+    font-size: 7pt;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+    display: block;
+  }
+  .footer {
+    position: fixed;
+    bottom: 8mm;
+    left: 18mm;
+    right: 18mm;
+    text-align: center;
+    font-size: 6.5pt;
+    color: #999;
+    letter-spacing: 0.5px;
+    padding-top: 8px;
+    border-top: 1px solid #e1e1e1;
+  }
+</style>
+</head>
+<body>
+
+<!-- ── PÁGINA 1 ── -->
+<div class="page">
+  <div class="header">
+    <img class="logo" src="${LOGO}" alt="Keweke"/>
+    <div class="doc-meta">
+      <div class="label">Presupuesto</div>
+      <div class="code">${num}</div>
+      <div style="margin-top:8px">${p.fecha || ""}</div>
+    </div>
+  </div>
+
+  <div class="doc-title">Proyecto</div>
+  <div class="project-name">${p.nombre || ""}</div>
+  <div class="client-name">${p.cliente || ""}</div>
+
+  <div class="project-info">
+    <div class="info-cell">
+      <div class="info-label">Fecha producción</div>
+      <div class="info-value">${p.fechaProduccion || "—"}</div>
+    </div>
+    <div class="info-cell">
+      <div class="info-label">Localización</div>
+      <div class="info-value">${p.localizacion || "—"}</div>
+    </div>
+    <div class="info-cell">
+      <div class="info-label">Validez</div>
+      <div class="info-value">30 días</div>
+    </div>
+  </div>
+
+  ${descripcionHTML ? `
+    <div class="section-title">Descripción del proyecto</div>
+    <div class="description-box">${descripcionHTML}</div>
+  ` : ""}
+
+  ${noIncluyeHTML ? `
+    <div class="no-incluye">
+      <span class="label">No incluye</span>
+      ${noIncluyeHTML}
+    </div>
+  ` : ""}
+
+  <div class="section-title">Resumen del presupuesto</div>
+  <table class="summary-table">
+    ${sumRows}
+    <tr class="subtotal"><td>Subtotal</td><td class="r">${fN(sub)}</td></tr>
+    <tr class="markup"><td>Mark up productora · ${p.margen}%</td><td class="r">${fN(margenEuros)}</td></tr>
+    <tr class="total-row"><td>Importe Total</td><td class="r">${fN(conMargen)}</td></tr>
+  </table>
+
+  <div class="footer">
+    C/ Muntaner 479, ático 4º · 08021 Barcelona · CIF B65430381 · www.keweke.com
+  </div>
+</div>
+
+<!-- ── PÁGINA 2 ── -->
+<div class="page">
+  <div class="header">
+    <img class="logo" src="${LOGO}" alt="Keweke"/>
+    <div class="doc-meta">
+      <div class="label">Desglose</div>
+      <div class="code">${num}</div>
+    </div>
+  </div>
+
+  <div class="doc-title">Desglose detallado de partidas</div>
+
+  <table class="detail-table">
+    <thead>
+      <tr>
+        <th>Concepto</th>
+        <th class="n" style="width:40px">Uds</th>
+        <th class="n" style="width:55px">Jornadas</th>
+        <th class="r" style="width:75px">Precio</th>
+        <th class="n" style="width:45px">Dto</th>
+        <th class="r" style="width:85px">Total</th>
+      </tr>
+    </thead>
+    <tbody>${activeRows}</tbody>
+  </table>
+
+  <table class="grand-totals">
+    <tr class="sub"><td>Subtotal</td><td class="r">${fN(sub)}</td></tr>
+    <tr class="mark"><td>Mark up · ${p.margen}%</td><td class="r">${fN(margenEuros)}</td></tr>
+    <tr class="total"><td>Importe Total</td><td class="r">${fN(conMargen)}</td></tr>
+  </table>
+
+  <div class="conditions">
+    <span class="label">Condiciones</span>
+    No incluye IVA. Condiciones de pago: 50% a la aprobación del proyecto + 50% a la entrega de másters.
+    Este presupuesto tiene una validez de 30 días.
+    Será requisito imprescindible la firma de este presupuesto para la aprobación del proyecto.
+    La conservación de los materiales brutos de la producción será por un máximo de 3 meses.
+  </div>
+
+  <div class="footer">
+    C/ Muntaner 479, ático 4º · 08021 Barcelona · CIF B65430381 · www.keweke.com
+  </div>
+</div>
+
+</body></html>`;
 }
 
 // ─── AUTOCOMPLETE ─────────────────────────────────────────────────────────────
 
 // ── COMPONENTS ────────────────────────────────────────────────────────────────
+// Avatar circular del usuario, con tooltip informativo al pasar el ratón
+function UserBadge({user, size=24, tooltip=''}) {
+  if(!user) return null;
+  const initials = (user.name||user.email||'?').split(/[\s@.]+/).filter(Boolean).slice(0,2).map(s=>s[0]?.toUpperCase()||'').join('');
+  const bg = user.photo ? 'transparent' : 'var(--surface3)';
+  return React.createElement('div',{
+    style:{width:size,height:size,borderRadius:'50%',flexShrink:0,
+      background:bg,overflow:'hidden',display:'flex',alignItems:'center',
+      justifyContent:'center',fontSize:Math.floor(size*0.4),fontWeight:600,
+      color:'var(--text2)',border:'1px solid var(--border)',
+      position:'relative',cursor:'help'},
+    title: tooltip || user.name || user.email || ''
+  },
+    user.photo
+      ? React.createElement('img',{src:user.photo,alt:user.name||'',
+          style:{width:'100%',height:'100%',objectFit:'cover'}})
+      : initials
+  );
+}
+
 function Toast({msg,type}) {
   if(!msg) return null;
   const bg = type==='error'?'#3b0000':type==='ok'?'#002b1a':'#1a1f2e';
@@ -897,9 +1348,23 @@ function Dashboard({proyectos, onSelect, onNew, onDelete, clients}) {
               React.createElement('div',{style:{fontSize:12,color:'var(--text3)',width:80,textAlign:'right',flexShrink:0}},
                 p.fecha?new Date(p.fecha+'T12:00').toLocaleDateString('es-ES',{day:'2-digit',month:'short',year:'2-digit'}):'—'
               ),
+              // Avatar del último modificador (o creador si no se ha modificado)
+              (()=>{
+                const lastUser = p.updatedBy || p.createdBy;
+                if(!lastUser) return null;
+                const creator = p.createdBy;
+                const modifier = p.updatedBy;
+                let tooltip = '';
+                if (creator && modifier && creator.uid !== modifier.uid) {
+                  tooltip = `Creado por ${creator.name}\nÚltima edición por ${modifier.name}`;
+                } else if (creator) {
+                  tooltip = `Creado por ${creator.name}`;
+                }
+                return React.createElement(UserBadge,{user:lastUser, size:26, tooltip});
+              })(),
               p.savedToDrive&&React.createElement('span',{style:{fontSize:11,color:'var(--green)',flexShrink:0,
                 cursor:'pointer',textDecoration:'underline'},
-                onClick:e=>{e.stopPropagation();openSavedPDF(p.id);}
+                onClick:e=>{e.stopPropagation();openSavedPDF(p);}
               },'✓ PDF'),
               React.createElement('button',{
                 onClick:e=>{ e.stopPropagation(); if(confirm(`¿Eliminar "${p.codigo}"?`)) onDelete(p.id); },
@@ -1074,6 +1539,24 @@ function Editor({proyecto, proyectoVersiones, onBack, onSave, onSavePDF, onCreat
           ),
           // Navegador de versiones
           React.createElement('div',{style:{display:'flex',alignItems:'center',gap:8,marginLeft:'auto'}},
+            // Info de autoría
+            (p.createdBy||p.updatedBy) && React.createElement('div',{
+              style:{display:'flex',alignItems:'center',gap:6,paddingRight:10,
+                borderRight:'1px solid var(--border)',marginRight:2}},
+              React.createElement(UserBadge,{
+                user: p.updatedBy || p.createdBy,
+                size: 22,
+                tooltip: (()=>{
+                  const c = p.createdBy, m = p.updatedBy;
+                  if (c && m && c.uid !== m.uid) return `Creado por ${c.name}\nÚltima edición por ${m.name}`;
+                  if (c) return `Creado por ${c.name}`;
+                  return '';
+                })()
+              }),
+              React.createElement('span',{style:{fontSize:11,color:'var(--text3)',whiteSpace:'nowrap'}},
+                (p.updatedBy||p.createdBy).name?.split(' ')[0] || ''
+              )
+            ),
             versiones.length>1&&React.createElement('div',{style:{display:'flex',alignItems:'center',gap:4,
               background:'var(--surface2)',borderRadius:8,padding:'3px 8px',
               border:'1px solid var(--border)'}},
@@ -1592,13 +2075,13 @@ function App() {
       createdAt:new Date().toISOString(),
       updatedAt:new Date().toISOString()
     };
-    await fbSave(nuevo);
+    await fbSave(nuevo, user);
     setShowNew(false); setCurId(id); setView('editor');
     flash('✓ '+codigo+' creado');
   };
 
   const savePresupuesto = async(proyecto)=>{
-    try{ await fbSave(proyecto); }
+    try{ await fbSave(proyecto, user); }
     catch(e){ flash('Error guardando: '+e.message,'error'); }
   };
 
@@ -1608,7 +2091,7 @@ function App() {
       const html=buildPDF(proyecto,calcTotals(proyecto),proyecto.codigo);
       const url=await fbUploadPDF(proyecto,html);
       const updated={...proyecto,savedToDrive:true,pdfUrl:url};
-      await fbSave(updated);
+      await fbSave(updated, user);
       flash('✓ PDF guardado en Drive');
     } catch(e){ flash('Error PDF: '+e.message,'error'); }
     setPdfBusy(false);
@@ -1694,7 +2177,7 @@ function App() {
                   createdAt:new Date().toISOString(),
                   updatedAt:new Date().toISOString()
                 };
-                await fbSave(nueva);
+                await fbSave(nueva, user);
                 setCurId(id);
                 flash('✓ v'+newVerNum+' creada — '+proyectoBase.codigo);
               }})
@@ -1722,7 +2205,7 @@ function App() {
           createdAt:new Date().toISOString(),
           updatedAt:new Date().toISOString()
         };
-        await fbSave(nuevo);
+        await fbSave(nuevo, user);
         setShowNew(false); setCurId(id); setView('editor');
         flash('✓ '+codigo+' creado con IA');
       },
